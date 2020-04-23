@@ -1,0 +1,219 @@
+---
+title: "01_Filter_data_Markdown"
+author: "Daniela Linero"
+date: "23/4/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+** Filtering the PREDICTS data**
+
+In this document I am going to present the process to filter the PREDICTS database and get the records belonging to:
+
+* Tropical bird and mammal frugivores
+* Tropical plants with endozoochorous seed dispersal 
+
+```{r loading packages, include=FALSE, warning=FALSE}
+library(data.table)
+library(dplyr)
+library(ngram)
+library(stringr)
+library(taxize)
+library(Hmisc)
+library(knitr)
+
+```
+
+#### 1. Getting tropical data
+
+1.1. Import and explore structure of PREDICTS data: 
+
+```{r import PREDICTS data,including=FALSE}
+diversity <- readRDS("./data/PREDICTS2020/PREDICTS2020.rds")
+
+```
+
+```{r Explore structure of data}
+
+# Total number of records
+length(diversity$Source_ID)
+
+# Total number of species
+length(unique(diversity$Best_guess_binomial))
+
+# Records per land-use and intensity level
+table(diversity$Predominant_habitat, diversity$Use_intensity)
+
+```
+
+1.2. Filter tropics
+
+I am going to filter all the coordinates that are between the Tropic of Cancer and Tropic of Capricorn. Additionally, I am going to select the records that are located in forests biomes (Tropical & Subtropical Dry Broadleaf Forests and Tropical & Subtropical Moist Broadleaf Forests). I excluded Tropical & Subtropical Coniferous Forests because Gymnosperms don't produce fruits. 
+
+
+```{r Filtering tropics and forests}
+
+
+TropicsDiversity <- diversity %>%
+  
+  # Select the coordinates that fall within the tropics
+  filter(between(Latitude, -23.43, 23.43)) %>% 
+  
+  # Select records located inside forest ecosystems
+  subset(Biome == "Tropical & Subtropical Moist Broadleaf Forests" | Biome == "Tropical & Subtropical Dry Broadleaf Forests") %>%
+  
+  # drop to remove levels with zero records
+  droplevels() 
+
+# Number of records per region
+table(TropicsDiversity$Region)
+
+#Number of records per biome
+table(TropicsDiversity$Biome)
+
+# Total number of records
+length(TropicsDiversity$Source_ID)
+
+# Total number of species
+length(unique(TropicsDiversity$Best_guess_binomial))
+
+# Records per land-use and intensity level
+table(TropicsDiversity$Predominant_habitat, TropicsDiversity$Use_intensity)
+
+
+```
+
+#### 2. Selecting bird and mammal frugivores in the PREDICTS dataset
+
+I use Terborgh's (1986) definition of frugivore: animal whose diet is made up of at least 50% fleshy fruits.  
+
+2.1. Identify species of frugivorous mammals: 
+
+I use the *Eltontraits* dataset for mammals to select frugivore species. The [dataset] (http://www.esapubs.org/archive/ecol/E095/178/metadata.php#_ENREF_3) uses diet information mostly taken from Walker's Mammals of the World. For species that did not have information on their diet in this source - or in other books or primary literature - the diet was infered based on congeneric species. 
+
+```{r import Mammal diet data,including=FALSE}
+
+Mammal_Diet <- read.csv("./Data/Eltontraits/MamFuncDat.csv", sep = ";")
+
+```
+
+```{r filter frugivores}
+
+Frugivore_mammals <- Mammal_Diet %>%
+  
+  # Filter mammals that have a diet composed of at least 50% fruit
+  filter(Diet.Fruit >= 50) %>% 
+  
+  # Select the columns of scientific name, % of diet composed of fruits, and diet certainty level
+  select(Scientific, Diet.Fruit, Diet.Certainty)  %>%
+  
+  # Create a column to differentiate mammal and bird records
+  mutate(Class = "Mammalia") 
+
+# Number of frugivore mammal species
+length(unique(Frugivore_mammals$Scientific))
+
+```
+
+2.2. Identify species of frugivorous birds: 
+
+Again, I use the *Eltontraits* dataset but for birds. 
+
+```{r import Bird diet data,including=FALSE}
+
+Birds_Diet <- read.csv("./Data/Eltontraits/BirdFuncDat.csv", sep = ";")
+
+```
+With the following code, I filter the frugivorous birds and merge the resulting species with the mammal species identified in the previous step
+
+```{r Get frugivore data}
+Frugivores <- Birds_Diet %>% 
+  
+  # Filter birds that have a diet composed of at least 50% fruits
+  filter(Diet.Fruit >= 50) %>%
+  
+   # Select the columns of scientific name, % of diet composed of fruits, and diet certainty level
+  select(Scientific, Diet.Fruit, Diet.Certainty)  %>%
+  
+  # Create a column to differentiate mammal and bird records
+  mutate(Class = "Aves") %>% 
+  
+  # Bind bird and mammal data
+  rbind(Frugivore_mammals) %>% 
+  
+  # Rename the scientific name column to match the PREDICTS dataset 
+  rename(Best_guess_binomial = Scientific)
+
+# Total number of frugivorous birds and mammals
+
+length(unique(Frugivores$Best_guess_binomial))
+
+
+```
+
+
+The level of uncertainty in the Eltontraits dataset provides information on the source from which the species diet was taken and whether it was inferred from other species in the same genus or from a different genus.
+
+ABC: The source is reliable (A: high, B: reasonably, C: quality unclear or estimated from a congeneric species)
+D1: Value is typical for the genus
+D2: Value is typical for the family
+
+```{r Frugivores uncertainty}
+# Number of records per level of uncertainty
+
+table(Frugivores$Diet.Certainty)
+
+```
+
+2.3. Check the species names
+
+The PREDICTS database presents binomial species names using the Catalog of Life nomenclature (Hudson et al., 2014). For this reason, I verified that the scientific names used in the EltonTraits dataset matched the corresponding species name presented in the Catalog of Life.
+
+```{r check nomenclature}
+# Get a character vector with the species names
+Frugivore_Names <- as.character(Frugivores$Best_guess_binomial)
+
+# Get the submitted species names and the corresponding name used in the Catalogue of Life (id = 1)
+Frugivore_Names<- gnr_resolve(names = Frugivore_Names, data_source_ids = 1) %>% 
+  
+  # Identify records that have a different name in the Catalogue of Life (if the name is the same
+  # the score will be 0.988)
+  subset(score < 0.98) 
+
+# Number of species that have different nomenclatures in both tables
+
+length(unique(Frugivore_Names$matched_name))
+
+```
+
+
+Since all of the species names matched the ones in the Catalogue of Life, I will merge the Frugivore species data with the PREDICTS data. 
+
+2.4. Get the records that belong to frugivore birds and mammals in the PREDICTS dataset 
+
+```{r Merge frugivore data and PREDICTS data}
+
+# Merge both datasets and retain only the species of PREDICTS that match the species in the Frugivores table
+PREDICTS_frugivores <- merge(x=TropicsDiversity, y=Frugivores, by = "Best_guess_binomial", all.x = FALSE) %>%
+  droplevels()
+
+# Total number of records
+length(PREDICTS_frugivores$Source_ID)
+
+# Total number of species
+length(unique(PREDICTS_frugivores$Best_guess_binomial))
+
+#  Number of records belonging to Birds and mammals
+table(PREDICTS_frugivores$Class.y)
+
+# Records per land-use and intensity level
+table(PREDICTS_frugivores$Predominant_habitat, PREDICTS_frugivores$Use_intensity)
+
+
+```
+
+
