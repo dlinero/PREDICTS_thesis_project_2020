@@ -11,7 +11,7 @@ knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 knitr::opts_chunk$set(cache = TRUE)
 ```
 
-**Filtering the PREDICTS data**
+# **Filtering the PREDICTS data**
 
 In this document I am going to present the process to filter the PREDICTS database and get the records belonging to:
 
@@ -272,8 +272,8 @@ Plantspecies <- Plantspecies  %>%
 Plantspecies <- read.csv("./output/intermediate_files/01_Filter_data_Plant_species_and_subspecies.csv")
 ```
 
-```{r Take a look at the table, results='asis'}
-kable(Plantspecies[c(1,141,730), c(3,5,8)], "pandoc", caption = "Fragment of the resulting table")
+```{r Take a look at the table, echo = FALSE, results='asis'}
+kable(Plantspecies[c(1,141,730), c(4,9,12)], "pandoc", caption = "Fragment of the resulting table")
 ```
 
 After filtering only the names that are at the species, variety and  subspecies level, I will check the nomenclature comparing it with the Catalogue of Life. 
@@ -312,7 +312,7 @@ Updated_plant_names <- rbind(aUpdated, bUpdated, cUpdated)
 # Import results
 Updated_plant_names <- read.csv("./output/intermediate_files/01_Filter_data_Plant_submitted_and_updated_name.csv")
 
-kable(Updated_plant_names[c(1, 401, 5076,5077), c(2,4,5,6)], "pandoc", caption = "Fragment of the resulting table showing names that are already update (score > 0.988), and a species that has a different nomeclature in the Catalague of life (score = 0.75) including a synonym ")
+kable(Updated_plant_names[c(1, 401, 5076,5077), c(2,4,5,6)], "pandoc", caption = "Fragment of the resulting table showing names that are already updated (score > 0.988), and a species that has a different nomeclature in the Catalague of life (score = 0.75) including a synonym ")
 
 ```
 
@@ -336,6 +336,8 @@ Updated_plant_names <- Updated_plant_names %>%
 kable(Updated_plant_names[c(1, 401, 5076,5077), ], "pandoc")
 
 ```
+
+
 In order to find out what synonyms are present in the PREDICTS dataset, I am going to get the species names that are shared between the PREDICTS dataset and the Updated names of the TRY dataset
 
 ```{r species in PREDICTS}
@@ -386,7 +388,7 @@ length(unique(Fruit_type$Updatedname))
 
 ```
 
-I will start selecting plants with endozoochorous seed dispersal from the Dispersal syndrome table. Therefore, I am going to eliminate all of the records that explicitly state a different seed dispersal syndrome. Additionally, I will also eliminate the records where not mammal or bird were included as consumers
+I will start selecting plants with endozoochorous seed dispersal from the Dispersal syndrome table. Therefore, I am going to eliminate all of the records that explicitly state a different seed dispersal syndrome. Additionally, I will also eliminate the records where no mammal or bird were included as consumers
 
 ```{r not endozoochory levels}
 # See the factors of dispersal syndrome type

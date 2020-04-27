@@ -369,7 +369,8 @@ summary {
 </div>
 
 
-<p>** Filtering the PREDICTS data**</p>
+<div id="filtering-the-predicts-data" class="section level1">
+<h1><strong>Filtering the PREDICTS data</strong></h1>
 <p>In this document I am going to present the process to filter the PREDICTS database and get the records belonging to:</p>
 <ul>
 <li>Tropical bird and mammal frugivores</li>
@@ -481,7 +482,7 @@ table(TropicsDiversity$Predominant_habitat, TropicsDiversity$Use_intensity)</cod
 <h4>2. Selecting bird and mammal frugivores in the PREDICTS dataset</h4>
 <p>I use Terborgh’s (1986) definition of frugivore: animal whose diet is made up of at least 50% fleshy fruits.</p>
 <p>2.1. Identify species of frugivorous mammals:</p>
-<p>I use the <em>Eltontraits</em> dataset for mammals to select frugivore species. The [dataset] (<a href="http://www.esapubs.org/archive/ecol/E095/178/metadata.php#_ENREF_3" class="uri">http://www.esapubs.org/archive/ecol/E095/178/metadata.php#_ENREF_3</a>) uses diet information mostly taken from Walker’s Mammals of the World. For species that did not have information on their diet in this source - or in other books or primary literature - the diet was infered based on congeneric species.</p>
+<p>I use the <em>Eltontraits</em> dataset for mammals to select frugivore species. The <a href="http://www.esapubs.org/archive/ecol/E095/178/metadata.php#_ENREF_3">dataset</a> uses diet information mostly taken from Walker’s Mammals of the World. For species that did not have information on their diet in this source - or in other books or primary literature - the diet was infered based on congeneric species.</p>
 <pre class="r"><code>Mammal_Diet &lt;- read.csv(&quot;./Data/Eltontraits/MamFuncDat.csv&quot;, sep = &quot;;&quot;)</code></pre>
 <pre class="r"><code>Frugivore_mammals &lt;- Mammal_Diet %&gt;%
   
@@ -591,6 +592,474 @@ table(PREDICTS_frugivores$Predominant_habitat, PREDICTS_frugivores$Use_intensity
 ##   Cropland                                         353           699
 ##   Urban                                              8             0
 ##   Cannot decide                                      0            66</code></pre>
+</div>
+<div id="selecting-plants-dispersed-by-endozoochory-in-the-predicts-dataset" class="section level4">
+<h4>3. Selecting plants dispersed by endozoochory in the PREDICTS dataset</h4>
+<p>3.1. Check species nomenclature</p>
+<p>I am going to use the TRY dataset which has information on the traits of Dispersal syndrome and Fruit type. Since the nomenclature varies a lot with respect to the PREDICTS dataset, the first thing that I’m going to do is to check the nomeclature and get all of the species names in binomial format (i.e. raise all of the subspecies and varieties to species level).</p>
+<p>First I will identify the number of words in each species names to know if they are classified as genre, species, subspecies or variety level.</p>
+<pre class="r"><code>Plantspecies &lt;- TRYdata %&gt;% 
+  
+  # get only the records that have information for the trait
+  subset(TraitID != &quot;NA&quot;) %&gt;% 
+  
+  # select only the columns with important information
+  select(Dataset, SpeciesName, AccSpeciesName, TraitID, TraitName,
+         DataName, OriglName, OrigValueStr, Reference, Comment) %&gt;% 
+  
+  # drop levels
+  droplevels() %&gt;% 
+  
+  # create a column to store the information of level of classification
+  mutate(Nwords = NA)
+
+
+# Count the words of the species names to determine the level of classification
+for (i in 1:nrow(Plantspecies)){
+  
+  # print the index to see the progress of the loop
+  print(i)
+  
+  # count the words in the consolidated species name
+  Plantspecies$Nwords[i] &lt;- wordcount(Plantspecies$AccSpeciesName[i]) 
+}
+
+# Select the species that are identified at the species or subspecies level
+
+Plantspecies &lt;- Plantspecies  %&gt;% 
+  
+  # Filter the rows that are classified at species, subspecies or variety level
+  filter(Nwords == 2 | Nwords == 4) %&gt;%
+  
+  #drop levels
+  droplevels()</code></pre>
+<table>
+<caption>Fragment of the resulting table</caption>
+<thead>
+<tr class="header">
+<th></th>
+<th align="left">AccSpeciesName</th>
+<th align="left">OrigValueStr</th>
+<th align="right">Nwords</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td align="left">Carnegiea gigantea</td>
+<td align="left">Animal</td>
+<td align="right">2</td>
+</tr>
+<tr class="even">
+<td>141</td>
+<td align="left">Ericameria nauseosa var. nauseosa</td>
+<td align="left">Wind</td>
+<td align="right">4</td>
+</tr>
+<tr class="odd">
+<td>730</td>
+<td align="left">Papaver dubium subsp. laevigatum</td>
+<td align="left">Wind</td>
+<td align="right">4</td>
+</tr>
+</tbody>
+</table>
+<p>After filtering only the names that are at the species, variety and subspecies level, I will check the nomenclature comparing it with the Catalogue of Life.</p>
+<pre class="r"><code># Make a vector with the species names
+PlantNames &lt;- Plantspecies %&gt;%
+  
+  # Get unique names
+  distinct(AccSpeciesName) %&gt;%
+  
+  # Make a character vector with the names of the species
+  pull()
+
+
+# Divide the vector because the gnr_resolve function does not work with large character vectors
+a &lt;- PlantNames[1:5500] 
+b &lt;- PlantNames[5501:11000]
+c &lt;- PlantNames[11001:15983]
+
+# Get the data source id for Catalogue of life
+sources &lt;- gnr_datasources() 
+
+# Get the matched name in the Catalogue of life 
+aUpdated &lt;- gnr_resolve(names= a, data_source_ids=1)   
+bUpdated &lt;- gnr_resolve(names= b, data_source_ids=1) 
+cUpdated &lt;- gnr_resolve(names= c, data_source_ids=1) 
+
+# Export results
+Updated_plant_names &lt;- rbind(aUpdated, bUpdated, cUpdated)</code></pre>
+<table>
+<caption>Fragment of the resulting table showing names that are already updated (score &gt; 0.988), and a species that has a different nomeclature in the Catalague of life (score = 0.75) including a synonym</caption>
+<thead>
+<tr class="header">
+<th></th>
+<th align="left">user_supplied_name</th>
+<th align="left">matched_name</th>
+<th align="left">data_source_title</th>
+<th align="right">score</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td align="left">Carnegiea gigantea</td>
+<td align="left">Carnegiea gigantea (Engelm.) Britton &amp; Rose</td>
+<td align="left">Catalogue of Life</td>
+<td align="right">0.988</td>
+</tr>
+<tr class="even">
+<td>401</td>
+<td align="left">Barringtonia acutangula subsp. spicata</td>
+<td align="left">Barringtonia acutangula subsp. spicata</td>
+<td align="left">Catalogue of Life</td>
+<td align="right">0.999</td>
+</tr>
+<tr class="odd">
+<td>5076</td>
+<td align="left">Hypochoeris glabra</td>
+<td align="left">Hypochaeris glabra L.</td>
+<td align="left">Catalogue of Life</td>
+<td align="right">0.750</td>
+</tr>
+<tr class="even">
+<td>5077</td>
+<td align="left">Hypochoeris glabra</td>
+<td align="left">Hypochaeris glabrata Phil.</td>
+<td align="left">Catalogue of Life</td>
+<td align="right">0.750</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code># Raise subspecies and varieties to species level
+Updated_plant_names &lt;- Updated_plant_names %&gt;%  
+  
+  # Get the updated names and raise the subspecies and varieties to species by selecting the 
+  # first two words of the string (this will include synonyms)
+  
+  mutate(Updatedname = word(matched_name, 1, 2)) %&gt;% 
+  
+  # Select the original name and the updated name in the Catalogue of life
+  select(user_supplied_name, Updatedname) %&gt;%
+  
+  # Rename the column to match the original TRY dataset
+  rename(&quot;AccSpeciesName&quot; = user_supplied_name)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th></th>
+<th align="left">AccSpeciesName</th>
+<th align="left">Updatedname</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td align="left">Carnegiea gigantea</td>
+<td align="left">Carnegiea gigantea</td>
+</tr>
+<tr class="even">
+<td>401</td>
+<td align="left">Barringtonia acutangula subsp. spicata</td>
+<td align="left">Barringtonia acutangula</td>
+</tr>
+<tr class="odd">
+<td>5076</td>
+<td align="left">Hypochoeris glabra</td>
+<td align="left">Hypochaeris glabra</td>
+</tr>
+<tr class="even">
+<td>5077</td>
+<td align="left">Hypochoeris glabra</td>
+<td align="left">Hypochaeris glabrata</td>
+</tr>
+</tbody>
+</table>
+<p>In order to find out what synonyms are present in the PREDICTS dataset, I am going to get the species names that are shared between the PREDICTS dataset and the Updated names of the TRY dataset</p>
+<pre class="r"><code>Updated_plant_names &lt;- Updated_plant_names %&gt;% 
+  
+  # Subset the species that are present in both datasets
+  subset(Updatedname %in% TropicsDiversity$Best_guess_binomial) %&gt;%
+  
+  # drop levels
+  droplevels()
+
+  # How many species are present in both datasets
+  length(unique(Updated_plant_names$Updatedname))</code></pre>
+<pre><code>## [1] 1151</code></pre>
+<p>I am going to create a table with the TRY records that belong to species, subspecies and varieties that are present (as species) in the PREDICTS database</p>
+<pre class="r"><code>Plantspecies &lt;- merge(x=Plantspecies, y=Updated_plant_names, by = &quot;AccSpeciesName&quot;, all.x = FALSE)</code></pre>
+<table>
+<caption>Fragment of the resulting table</caption>
+<thead>
+<tr class="header">
+<th></th>
+<th align="left">AccSpeciesName</th>
+<th align="right">TraitID</th>
+<th align="left">TraitName</th>
+<th align="left">OrigValueStr</th>
+<th align="left">Updatedname</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td align="left">Abarema jupunba</td>
+<td align="right">28</td>
+<td align="left">Dispersal syndrome</td>
+<td align="left">animal</td>
+<td align="left">Abarema jupunba</td>
+</tr>
+<tr class="even">
+<td>154</td>
+<td align="left">Acridocarpus longifolius</td>
+<td align="right">99</td>
+<td align="left">Fruit type</td>
+<td align="left">nut</td>
+<td align="left">Acridocarpus longifolius</td>
+</tr>
+</tbody>
+</table>
+<p>3.2. Identify plants with endozoochorous seed dispersal</p>
+<p>First, I will divide the dataset into one table with the trait of Dispersal syndrome and another one with the trait of Fruit type.</p>
+<pre class="r"><code># Get the table for dispersal syndrome
+Dispersal_syndrome &lt;- Plantspecies %&gt;% 
+  subset(TraitID == 28) %&gt;% 
+  droplevels()
+
+# Number of species in the dataset
+length(unique(Dispersal_syndrome$Updatedname))</code></pre>
+<pre><code>## [1] 738</code></pre>
+<pre class="r"><code># Get the table for fruit type
+Fruit_type &lt;- Plantspecies %&gt;% 
+  subset(TraitID == 99) %&gt;%
+  droplevels()
+
+# Number of species in the dataset
+length(unique(Fruit_type$Updatedname))</code></pre>
+<pre><code>## [1] 548</code></pre>
+<p>I will start selecting plants with endozoochorous seed dispersal from the Dispersal syndrome table. Therefore, I am going to eliminate all of the records that explicitly state a different seed dispersal syndrome. Additionally, I will also eliminate the records where no mammal or bird were included as consumers</p>
+<pre class="r"><code># See the factors of dispersal syndrome type
+DS_levels &lt;- as.data.frame(levels(Dispersal_syndrome$OrigValueStr))
+
+# Example of the mentioned values
+DS_levels$`levels(Dispersal_syndrome$OrigValueStr)`[c(4, 8, 14, 19)]</code></pre>
+<pre><code>## [1] a-wind                                                         
+## [2] agouti, horse, cattle, deer, tapir, peccary, paca, some rodents
+## [3] anemochory                                                     
+## [4] animal                                                         
+## 233 Levels: 0 ... zoochor</code></pre>
+<p>This is the list of values I will not include in my analysis</p>
+<pre class="r"><code>Not_endozoo &lt;- c(&quot;a-wind&quot;, &quot;Anemo&quot;, &quot;anemochory&quot;, &quot;Anemochory&quot;, &quot;ant&quot;, &quot;ant-dispersed&quot;,
+                 &quot;Ants&quot;, &quot;autochor&quot;, &quot;Autochory&quot;, &quot;ballochor&quot;, &quot;boleochor&quot;, &quot;Cichlids&quot;, &quot;Pacu&quot;,
+                 &quot;wind+water&quot;, &quot;commerce&quot;, &quot;wind&quot;, &quot;dysochor&quot;, &quot;epizoochor&quot;, &quot;ethelochor&quot;, 
+                 &quot;exozoochory&quot;, &quot;explosive&quot;, &quot;Explosive&quot;, &quot;Fish&quot;, &quot;Floating&quot;, &quot;generative&quot;,
+                 &quot;germinule&quot;, &quot;machinery&quot;, &quot;hemerochor&quot;, &quot;man&quot;, &quot;meteorochor&quot;, 
+                 &quot;nautochor&quot;, &quot;ombrochor&quot;, &quot;seed contamination&quot;, &quot;ground&quot;, &quot;    speirochor&quot;, &quot;snail&quot;, 
+                 &quot;turtles&quot;, &quot;Wind&quot;, &quot;water&quot;, &quot;Water&quot;, &quot;agochor&quot;, &quot;Anchorage&quot;, &quot;terrapin&quot;,
+                 &quot;Pheidole&quot;, &quot;car&quot;, &quot;carried&quot;, &quot;clothes&quot;, &quot;environmental&quot;, &quot;erosion&quot;, &quot;Geochelone&quot;,
+                 &quot;rainwash&quot;, &quot;reptiles&quot;, &quot;roe&quot;, &quot;speirochor&quot;, &quot;unassisted&quot;, &quot;Unassisted&quot;, 
+                 &quot;unspecialised&quot;)
+
+
+# Filter out all of the records with values in the vector Not_endozoo
+Dispersal_syndrome &lt;- Dispersal_syndrome %&gt;% 
+
+  filter(!str_detect(OrigValueStr, paste(Not_endozoo, collapse = &quot;|&quot;))) %&gt;%
+  
+  # drop levels
+  droplevels()
+
+
+# Number of species in the dataset
+length(unique(Dispersal_syndrome$Updatedname))</code></pre>
+<pre><code>## [1] 719</code></pre>
+<p>Now I am going to create a vector with the species names that are explicitly classified with endozoochory.<strong>However</strong>, since each dataset that makes up the TRY dataset uses different terms, I will filter each one separately.</p>
+<pre class="r"><code># The Miombo dataset uses a 1 to specify species that have endozoochory
+Endoo_PlantSpecies &lt;- Dispersal_syndrome %&gt;%
+  
+  # Select specific dataset
+  subset(Dataset == &quot;Miombo tree species - SLA, leaf and seed size&quot;) %&gt;%
+  
+  # Filter values with condition TRUE for endozoochory
+  filter(OriglName == &quot;dispersal mode: endozoochory&quot; &amp; OrigValueStr == 1) %&gt;%
+  
+  # Make a character vector
+  droplevels() %&gt;% pull(Updatedname) %&gt;% as.character()</code></pre>
+<p>I created a function to make things faster:</p>
+<pre class="r"><code># Function that updates the vector of species names that have endozoochorus dispersal syndrome by 
+# taking a specific dataset and searching for the TRUE condition for endozoochory
+
+Filter_endozoochory_terms &lt;- function(DatasetName, FilterValue ) {
+  c(Endoo_PlantSpecies, as.character(Dispersal_syndrome %&gt;% # Update vector
+                                       
+                                       # Select specific dataset
+                                       subset(Dataset == DatasetName) %&gt;%
+                                       
+                                       # Filter out all of the species that have already been identified 
+                                       # as having endozoochory
+                                       subset(Updatedname %nin% Endoo_PlantSpecies) %&gt;% 
+                                       
+                                       # Filter values with condition TRUE for endozoochory
+                                       filter(str_detect(OrigValueStr, FilterValue)) %&gt;%
+                                       
+                                       # Get unique species names
+                                       distinct(Updatedname) %&gt;%
+                                       
+                                       # Make a vector
+                                       droplevels() %&gt;% pull(Updatedname)))
+}</code></pre>
+<p>Filter all datasets</p>
+<pre class="r"><code># Apply function Filter_endozoochory_terms with each of the databases
+
+Endoo_PlantSpecies &lt;- Filter_endozoochory_terms(DatasetName = &quot;The LEDA Traitbase&quot;, FilterValue = &quot;endozoochor&quot;)
+Endoo_PlantSpecies &lt;- Filter_endozoochory_terms(DatasetName = &quot;BASECO: a floristic and ecological database of Mediterranean French flora&quot;,
+                             FilterValue = &quot;Endo-zoochory&quot;)
+Endoo_PlantSpecies &lt;- Filter_endozoochory_terms(DatasetName = &quot;Global Seed Mass, Plant Height Database&quot;, FilterValue = &quot;eaten&quot;)
+Endoo_PlantSpecies &lt;- Filter_endozoochory_terms(DatasetName = &quot;KEW Seed Information Database (SID)&quot;, FilterValue = &quot;eaten&quot;)
+
+# Number of endozoochorus species until now
+length(unique(Endoo_PlantSpecies))</code></pre>
+<pre><code>## [1] 326</code></pre>
+<p>Since a lot of species have an animal as seed disperser but don’t have information whether it is endozoochory or epizoochory, I will use the dataset of fruit type to clarify the dispersal syndrome.</p>
+<pre class="r"><code># Get the list of species that need revision 
+Revise_species &lt;-   Dispersal_syndrome %&gt;% 
+  
+  # Subset all the species that are not present in the Endozoochory list
+  subset(Updatedname %nin% Endoo_PlantSpecies) %&gt;% 
+  
+  # Get unique species names
+  distinct(Updatedname, .keep_all = TRUE) %&gt;%
+  
+  # drop levels
+  droplevels()
+
+# Number of species that need revision
+length(unique(Revise_species$Updatedname))</code></pre>
+<pre><code>## [1] 393</code></pre>
+<pre class="r"><code># Identify the species in the list of revision that have fleshy fruits and therefore may be dispersed by endozoochory. 
+
+
+# Create a character vector with the factors of fleshy fruits
+Fleshy &lt;- c(&quot;berry&quot;, &quot;Berry&quot;, &quot;drupe&quot;, &quot;Drupe&quot;)
+
+# Identify the species that have fleshy fruits
+Fruit_type &lt;- Fruit_type %&gt;% 
+  
+  # Filter all of the records with fleshy fruits
+  filter(str_detect(OrigValueStr, paste(Fleshy, collapse = &quot;|&quot;))) %&gt;%
+  
+  # Select only the name of the species and the fruit type
+  select(Updatedname, OrigValueStr) %&gt;%
+  
+  # Get the unique species names
+  distinct(Updatedname, .keep_all = TRUE) %&gt;% 
+  
+  # drop levels
+  droplevels()
+
+  # Number of species with fleshy fruits
+  table(Fruit_type$OrigValueStr)</code></pre>
+<pre><code>## 
+## berry Berry drupe Drupe 
+##   119     5   106     9</code></pre>
+<p>Now I will add to the list of species with endozoochory, those species that:</p>
+<ul>
+<li>Needed revision (are dispersed by animals) and have fleshy fruits</li>
+<li>Species with fleshy fruits but without a seed dispersal syndrome value. I will do this because fruit morphology usually indicates the means of dispersal (Howe &amp; Smallwood, 1982), and most studies equate fleshy fruits with endozoochory (Chen, Cornwell, Zhang, &amp; Moles, 2017).</li>
+</ul>
+<pre class="r"><code>Endoo_PlantSpecies &lt;- c(Endoo_PlantSpecies, as.character(merge(x = Revise_species, y = Fruit_type, by= &quot;Updatedname&quot;, all = TRUE) %&gt;% # Merge the
+                                                           # datasets of plants dispersed by animals, and plants with fleshy fruits 
+                                                           
+                                                           # Filter out all of the species that don&#39;t have  information of fruit type or don&#39;t 
+                                                           # have fleshy fruits
+                                                           subset(OrigValueStr.y != &quot;NA&quot;) %&gt;% 
+                                                           
+                                                           # drop levels
+                                                           droplevels() %&gt;% 
+                                                           
+                                                           # Get unique species names
+                                                           distinct(Updatedname) %&gt;%
+                                                           
+                                                           # Make a vector
+                                                           droplevels() %&gt;% pull(Updatedname)))
+
+# Eliminate repeated records between the Fruit type and Dispersal syndrome datasets
+Endoo_PlantSpecies &lt;- unique(Endoo_PlantSpecies)
+
+# Updated number of species with endozoochorous seed dispersal 
+length(unique(Endoo_PlantSpecies))</code></pre>
+<pre><code>## [1] 534</code></pre>
+<p>The rest of the species were revised manually using the Royal Botanic Gardens Kew Seed Information Database (SID), 2020</p>
+<pre class="r"><code># Update list to revise
+Revise_species &lt;-   Revise_species %&gt;% 
+  
+  # Subset all the species that are not present in the Endozoochory list
+  subset(Updatedname %nin% Endoo_PlantSpecies) %&gt;% 
+  
+  # drop levels
+  droplevels()
+
+# Number of species to revise
+length(unique(Revise_species$Updatedname))</code></pre>
+<pre><code>## [1] 372</code></pre>
+<pre class="r"><code># Load species checked manually
+Revised &lt;- read.csv(&quot;./output/intermediate_files/01_Filter_data_Plant_species_revised.csv&quot;, sep = &quot;;&quot;)</code></pre>
+<p>Get the final list of endozoochorous plant species</p>
+<pre class="r"><code>Endoo_PlantSpecies &lt;- c(Endoo_PlantSpecies, as.character(Revised  %&gt;% 
+                                                           pull(Updatedname)))
+
+# Number of endozoochorous plant species
+length(unique(Endoo_PlantSpecies))</code></pre>
+<pre><code>## [1] 632</code></pre>
+<p>3.3. Identify plants with endozoochorous seed dispersal in the PREDICTS database</p>
+<pre class="r"><code>Endoo_PlantSpecies &lt;- read.csv(&quot;./output/intermediate_files/01_Filter_data_List_endozoochory_species.csv&quot;, header = TRUE) %&gt;%
+  
+  # rename column to match the PREDICTS dataset
+  rename(Best_guess_binomial = x) %&gt;%
+  
+  # get unique species names
+  distinct(Best_guess_binomial)
+
+
+PREDICTSendooPlants &lt;- merge(x=TropicsDiversity, y= Endoo_PlantSpecies, by= &quot;Best_guess_binomial&quot;, all.x = FALSE)
+
+# Total number of records
+length(PREDICTSendooPlants$Source_ID)</code></pre>
+<pre><code>## [1] 70560</code></pre>
+<pre class="r"><code># Total number of species
+length(unique(PREDICTSendooPlants$Best_guess_binomial))</code></pre>
+<pre><code>## [1] 632</code></pre>
+<pre class="r"><code># Records per land-use and intensity level
+table(PREDICTSendooPlants$Predominant_habitat, PREDICTSendooPlants$Use_intensity)</code></pre>
+<pre><code>##                                           
+##                                            Minimal use Light use
+##   Primary forest                                 23729      3108
+##   Primary non-forest                               198        66
+##   Young secondary vegetation                      4040       978
+##   Intermediate secondary vegetation               2790      3638
+##   Mature secondary vegetation                      959       457
+##   Secondary vegetation (indeterminate age)         516      1046
+##   Plantation forest                               2946      8303
+##   Pasture                                         1872      1608
+##   Cropland                                        1382         0
+##   Urban                                              0         0
+##   Cannot decide                                      0         0
+##                                           
+##                                            Intense use Cannot decide
+##   Primary forest                                  2564          1870
+##   Primary non-forest                                 0             0
+##   Young secondary vegetation                         0            80
+##   Intermediate secondary vegetation                110            41
+##   Mature secondary vegetation                      173             0
+##   Secondary vegetation (indeterminate age)           0          3410
+##   Plantation forest                                520           448
+##   Pasture                                           60             0
+##   Cropland                                        3120           528
+##   Urban                                              0             0
+##   Cannot decide                                      0             0</code></pre>
+</div>
 </div>
 
 
