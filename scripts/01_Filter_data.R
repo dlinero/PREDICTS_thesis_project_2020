@@ -28,6 +28,9 @@ TropicsDiversity <- diversity %>%
 # Export table
 write.csv(TropicsDiversity, "./output/intermediate_files/01_Filter_data_Tropical_records.csv")
 
+# Import table
+TropicsDiversity <- read.csv("./output/intermediate_files/01_Filter_data_Tropical_records.csv")
+
 # Number of records per region
 table(TropicsDiversity$Region)
 
@@ -112,7 +115,7 @@ write.csv(Frugivore_Names, "./output/intermediate_files/01_Filter_data_Frugivore
 PREDICTS_frugivores <- merge(x=TropicsDiversity, y=Frugivores, by = "Best_guess_binomial", all.x = FALSE) %>%
   droplevels()
 
-# Save file
+# Export table
 write.csv(PREDICTS_frugivores, "./output/cleaned_data/01_Filter_data_PREDICTS_Frugivores_records.csv")
 
 # Get the number of species in the new dataset
@@ -136,7 +139,7 @@ table(PREDICTS_frugivores$Predominant_habitat, PREDICTS_frugivores$Use_intensity
 # Filter plants with endozoochory in PREDICTS: ------------------------------------------------------
 
 # Import TRY dataset
-TRYdata <- fread("./Diet/9212_13042020170619_TRY/9212.txt", header = T, sep = "\t", dec = ".", quote = "", data.table = T) 
+TRYdata <- fread("./data/TRY/9212.txt", header = T, sep = "\t", dec = ".", quote = "", data.table = T) 
 
 # Check taxonomy 
 # Determine the records that are identified at least at the species level
@@ -147,10 +150,15 @@ Plantspecies <- TRYdata %>%
   subset(TraitID != "NA") %>% 
   
   # select only the columns with important information
-  select(DatasetID:OrigUnitStr, Reference, Comment) %>% 
+  select(Dataset, SpeciesName, AccSpeciesName, TraitID, TraitName,
+         DataName, OriglName, OrigValueStr, Reference, Comment) %>% 
+  
+  # drop levels
+  droplevels() %>% 
   
   # create a column to store the information of level of classification
   mutate(Nwords = NA)
+
 
 # Count the words of the species names to determine the level of classification
 for (i in 1:nrow(Plantspecies)){
@@ -162,14 +170,21 @@ for (i in 1:nrow(Plantspecies)){
   Plantspecies$Nwords[i] <- wordcount(Plantspecies$AccSpeciesName[i]) 
 }
 
-
-# Select the species that are identified at the species or subespecies level
+# Select the species that are identified at the species or subspecies level
 
 Plantspecies <- Plantspecies  %>% 
   
-  # Filter the rows that are classified at species or subspecies level
+  # Filter the rows that are classified at species, subspecies or variety level
   filter(Nwords == 2 | Nwords == 4) %>%
+  
+  #drop levels
   droplevels()
+
+# Export table
+write.csv(Plantspecies, "./output/intermediate_files/01_Filter_data_Plant_species_and_subspecies.csv")
+
+# Import table
+Plantspecies <- read.csv("./output/intermediate_files/01_Filter_data_Plant_species_and_subspecies.csv")
 
 # Check taxonomy using the Catalogue of life
 
@@ -198,17 +213,16 @@ cUpdated <- gnr_resolve(names= c, data_source_ids=1)
 
 # Export results
 Updated_plant_names <- rbind(aUpdated, bUpdated, cUpdated)
-write.csv(Updated_plant_names, "Updated_plant_names.csv")
+write.csv(Updated_plant_names, "./output/intermediate_files/01_Filter_data_Plant_submitted_and_updated_name.csv")
 
 # Import results
-Updated_plant_names <- read.csv("Updated_plant_names.csv", sep = ",")
+Updated_plant_names <- read.csv("./output/intermediate_files/01_Filter_data_Plant_submitted_and_updated_name.csv")
 
 
-# Create the table to compare with the PREDICTS dataset to find out what plant species
-# are present there and what synonyms does it have
+# Raise subspecies and varieties to species level
 Updated_plant_names <- Updated_plant_names %>%  
   
-  # Get the updated names and rise the subspecies to species by selecting the 
+  # Get the updated names and raise the subspecies and varieties to species by selecting the 
   # first two words of the string (this will include synonyms)
   
   mutate(Updatedname = word(matched_name, 1, 2)) %>% 
@@ -220,27 +234,23 @@ Updated_plant_names <- Updated_plant_names %>%
   rename("AccSpeciesName" = user_supplied_name)
 
 
-
 # Find out what species names (and what synonyms) are present in the PREDICTS data.
 
 Updated_plant_names <- Updated_plant_names %>% 
   
   # Subset the species that are present in both datasets
-  subset(Updatedname %in% TropicsDiversity$Best_guess_binomial)
+  subset(Updatedname %in% TropicsDiversity$Best_guess_binomial) %>%
+  
+  # drop levels
+  droplevels()
 
 # How many species are present in both datasets
 length(unique(Updated_plant_names$Updatedname))
 
-# Add a column with the Catalogue of life species name in the TRY dataset filtered to have only 
-# species and subspecies.
-# Retain only the species that match with the species present in the PREDICTS dataset
+# Create a table with the TRY records that belong to species, subspecies and varieties
+# that are present (as species) in the PREDICTS database
 Plantspecies <- merge(x=Plantspecies, y=Updated_plant_names, by = "AccSpeciesName", all.x = FALSE)
 
-# Export results
-write.csv(Plantspecies, "Plantspecies.csv")
-
-# Import results
-Plantspecies <- read.csv("Plantspecies.csv", sep = ";")
 
 # Search for plants with endozoochory 
 
@@ -252,13 +262,13 @@ Dispersal_syndrome <- Plantspecies %>%
   droplevels()
 
 # Export results
-write.csv(Dispersal_syndrome, "syndrome.csv")
+write.csv(Dispersal_syndrome, "output/intermediate_files/01_Filter_data_All_dispersal_syndrome_records.csv")
 
 # Get the table for fruit type
 Fruit_type <- Plantspecies %>% subset(TraitID == 99) %>% droplevels()
 
 # Export results 
-write.csv(Fruit_type, "fruit_type.csv")
+write.csv(Fruit_type, "output/intermediate_files/01_Filter_data_All_fruit_type_records.csv")
 
 # See the factors of dispersal syndrome type
 DS_levels <- as.data.frame(levels(Dispersal_syndrome$OrigValueStr))
@@ -301,85 +311,19 @@ Endoo_PlantSpecies <- Dispersal_syndrome %>%
   # Make a character vector
   droplevels() %>% pull(Updatedname) %>% as.character()
 
-# The LEDA dataset mentions "endozoochor"
-Endoo_PlantSpecies <- c(Endoo_PlantSpecies, as.character(Dispersal_syndrome %>% # Update vector
-                                                           
-                                                           # Select specific dataset
-                                                           subset(Dataset == "The LEDA Traitbase") %>%
-                                                           
-                                                           # Filter out all of the species that have already been identified 
-                                                           # as having endozoochory
-                                                           subset(Updatedname %nin% Endoo_PlantSpecies) %>% 
-                                                           
-                                                           # Filter values with condition TRUE for endozoochory
-                                                           filter(OrigValueStr == "endozoochor") %>%
-                                                           
-                                                           # Get unique species names
-                                                           distinct(Updatedname) %>%
-                                                           
-                                                           # Make a vector
-                                                           droplevels() %>% pull(Updatedname)))
-# The BASECO dataset mentions "Endo-zoochory"
-Endoo_PlantSpecies <- c(Endoo_PlantSpecies, as.character(Dispersal_syndrome %>% # Update vector
-                                                           
-                                                           # Select specific dataset
-                                                           subset(Dataset == "BASECO: a floristic and ecological database of Mediterranean French flora") %>%
-                                                           
-                                                           # Filter out all of the species that have already been identified 
-                                                           # as having endozoochory
-                                                           subset(Updatedname %nin% Endoo_PlantSpecies) %>% 
-                                                           
-                                                           # Filter values with condition TRUE for endozoochory
-                                                           filter(OrigValueStr == "Endo-zoochory") %>%
-                                                           
-                                                           # Get unique species names
-                                                           distinct(Updatedname) %>%
-                                                           
-                                                           # Make a vector
-                                                           droplevels() %>% pull(Updatedname)))
+# Use the function Filter_endozoochory_terms to filter the rest of databases (to see the function, open document
+# ./R/01_Filter_data_functions.R)
 
-# The Global seed mass dataset mentions "Diaspore is eaten intentionally" or similar
-Endoo_PlantSpecies <- c(Endoo_PlantSpecies, as.character(Dispersal_syndrome %>% # Update vector
-                                                           
-                                                           # Select specific dataset
-                                                           subset(Dataset == "Global Seed Mass, Plant Height Database") %>%  
-                                                           
-                                                           #Filter out all of the species that have already been identified 
-                                                           # as having endozoochory
-                                                           subset(Updatedname %nin% Endoo_PlantSpecies) %>% 
-                                                           
-                                                           # Filter values with condition TRUE for endozoochory
-                                                           filter(str_detect(OrigValueStr, "eaten")) %>%
-                                                           
-                                                           # Get unique species names
-                                                           distinct(Updatedname) %>%
-                                                           
-                                                           # Make a vector
-                                                           droplevels() %>% pull(Updatedname)))
+Endoo_PlantSpecies <- Filter_endozoochory_terms(DatasetName = "The LEDA Traitbase", FilterValue = "endozoochor")
+Endoo_PlantSpecies <- Filter_endozoochory_terms(DatasetName = "BASECO: a floristic and ecological database of Mediterranean French flora",
+                             FilterValue = "Endo-zoochory")
+Endoo_PlantSpecies <- Filter_endozoochory_terms(DatasetName = "Global Seed Mass, Plant Height Database", FilterValue = "eaten")
+Endoo_PlantSpecies <- Filter_endozoochory_terms(DatasetName = "KEW Seed Information Database (SID)", FilterValue = "eaten")
 
-
-# The KEW Seed Information Database (SID) mentions "Diaspore is eaten intentionally" or similar
-Endoo_PlantSpecies <- c(Endoo_PlantSpecies, as.character(Dispersal_syndrome %>% # Update vector
-                                                           
-                                                           # Select specific dataset
-                                                           subset(Dataset == "KEW Seed Information Database (SID)") %>%  
-                                                           
-                                                           #Filter out all of the species that have already been identified 
-                                                           # as having endozoochory
-                                                           subset(Updatedname %nin% Endoo_PlantSpecies) %>% 
-                                                           
-                                                           # Filter values with condition TRUE for endozoochory
-                                                           filter(str_detect(OrigValueStr, "eaten")) %>%
-                                                           
-                                                           # Get unique species names
-                                                           distinct(Updatedname) %>%
-                                                           
-                                                           # Make a character vector
-                                                           droplevels() %>% pull(Updatedname)))
 
 # Determine what species have an animal as the dispersion vector, but the 
 # dataset does not specify whether it is endozoochory or epizoochory
-Revise_notsure <-   Dispersal_syndrome %>% 
+Revise_species <-   Dispersal_syndrome %>% 
   
   # Subset all the species that are not present in the Endozoochory list
   subset(Updatedname %nin% Endoo_PlantSpecies) %>% 
@@ -405,7 +349,7 @@ Fruit_type <- Fruit_type %>%
   # Filter all of the records with fleshy fruits
   filter(str_detect(OrigValueStr, paste(Fleshy, collapse = "|"))) %>%
   
-  # Select only the name of teh species and the fruit type
+  # Select only the name of the species and the fruit type
   select(Updatedname, OrigValueStr) %>%
   
   # Get the unique species names
@@ -414,10 +358,10 @@ Fruit_type <- Fruit_type %>%
   # drop levels
   droplevels()
 
-# Add to the list of Endozoochory plants the species that we already identified are dispersed by animals
-# and have fleshy fruits. 
+# Add to the list of Endozoochory plants the species that were already identified as being dispersed by animals
+# and also have fleshy fruits. 
 # I'm also going to add those species without a dispersal syndrome value, but with fleshy fruits 
-Endoo_PlantSpecies <- c(Endoo_PlantSpecies, as.character(merge(x = Revise_notsure, y = Fruit_type, by= "Updatedname", all = TRUE) %>% # Merge the
+Endoo_PlantSpecies <- c(Endoo_PlantSpecies, as.character(merge(x = Revise_species, y = Fruit_type, by= "Updatedname", all = TRUE) %>% # Merge the
                                                            # datasets of plants dispersed by animals, and plants with fleshy fruits 
                                                            
                                                            # Filter out all of the species that don't have information of fruit type or don't 
@@ -433,9 +377,11 @@ Endoo_PlantSpecies <- c(Endoo_PlantSpecies, as.character(merge(x = Revise_notsur
                                                            # Make a vector
                                                            droplevels() %>% pull(Updatedname)))
 
+# Eliminate repeated records between the Fruit type and Dispersal syndrome datasets
+Endoo_PlantSpecies <- unique(Endoo_PlantSpecies)
 
 # Update list to revise
-Revise_notsure <-   Revise_notsure %>% 
+Revise_species <-   Revise_species %>% 
   
   # Subset all the species that are not present in the Endozoochory list
   subset(Updatedname %nin% Endoo_PlantSpecies) %>% 
@@ -444,23 +390,23 @@ Revise_notsure <-   Revise_notsure %>%
   droplevels()
 
 # Export table
-write.csv(Revise_notsure, "RevisePlantSpecies.csv")
+write.csv(Revise_species, "./output/intermediate_files/01_Filter_data_Plant_species_to_revise.csv")
 
 # Load species checked manually
-Revised <- read.csv("RevisePlantSpecies.csv", sep = ";")
+Revised <- read.csv("./output/intermediate_files/01_Filter_data_Plant_species_revised.csv", sep = ";")
 
-# Get the final list of endozoochory species
+# Get the final list of endozoochorous plant species 
 Endoo_PlantSpecies <- c(Endoo_PlantSpecies, as.character(Revised  %>% 
                                                            pull(Updatedname)))
 
 # Export list of species
-write.csv(Endoo_PlantSpecies, "List_endozoochory_plant_species.csv")
+write.csv(Endoo_PlantSpecies, "./output/intermediate_files/01_Filter_data_List_endozoochory_species.csv")
 
 # Import list of species
-Endoo_PlantSpecies <- read.csv("List_endozoochory_plant_species.csv", header = FALSE) %>%
+Endoo_PlantSpecies <- read.csv("./output/intermediate_files/01_Filter_data_List_endozoochory_species.csv", header = TRUE) %>%
   
   # rename column to match the PREDICTS dataset
-  rename(Best_guess_binomial = V1) %>%
+  rename(Best_guess_binomial = x) %>%
   
   # get unique species names
   distinct(Best_guess_binomial)
@@ -469,10 +415,10 @@ Endoo_PlantSpecies <- read.csv("List_endozoochory_plant_species.csv", header = F
 PREDICTSendooPlants <- merge(x=TropicsDiversity, y= Endoo_PlantSpecies, by= "Best_guess_binomial", all.x = FALSE)
 
 # Export table
-write.csv(PREDICTSendooPlants, "./FilteredTables/PREDICTSendooPlants.csv")
+write.csv(PREDICTSendooPlants, "./output/cleaned_data/01_Filter_data_PREDICTS_EndozooPlants_records.csv")
 
 # Import table
-PREDICTSendooPlants <- read.csv("./FilteredTables/PREDICTSendooPlants.csv", sep = ";")
+PREDICTSendooPlants <- read.csv("./output/cleaned_data/01_Filter_data_PREDICTS_EndozooPlants_records.csv")
 
 # Get the number of species in the new dataset
 length(unique(PREDICTSendooPlants$Best_guess_binomial))
