@@ -386,34 +386,6 @@ length(diversity$Source_ID)</code></pre>
 <pre class="r"><code># Total number of species
 length(unique(diversity$Best_guess_binomial))</code></pre>
 <pre><code>## [1] 32149</code></pre>
-<pre class="r"><code># Records per land-use and intensity level
-table(diversity$Predominant_habitat, diversity$Use_intensity)</code></pre>
-<pre><code>##                                           
-##                                            Minimal use Light use
-##   Primary forest                                717927    289637
-##   Primary non-forest                            133496     19216
-##   Young secondary vegetation                    137074     62326
-##   Intermediate secondary vegetation             129319     69917
-##   Mature secondary vegetation                    82453     45201
-##   Secondary vegetation (indeterminate age)      155180     62278
-##   Plantation forest                             115441    149938
-##   Pasture                                       235771    290266
-##   Cropland                                       72047    170536
-##   Urban                                          30298     41968
-##   Cannot decide                                    745       192
-##                                           
-##                                            Intense use Cannot decide
-##   Primary forest                                101771         47583
-##   Primary non-forest                              7974          1407
-##   Young secondary vegetation                     35322         20480
-##   Intermediate secondary vegetation               9854         32808
-##   Mature secondary vegetation                     2115         17219
-##   Secondary vegetation (indeterminate age)       24237         63463
-##   Plantation forest                              63590         26973
-##   Pasture                                       225070        101989
-##   Cropland                                      177903         67176
-##   Urban                                           7282          1682
-##   Cannot decide                                    101          7050</code></pre>
 <p>1.2. Filter tropics</p>
 <p>I am going to filter all the coordinates that are between the Tropic of Cancer and Tropic of Capricorn. Additionally, I am going to select the records that are located in forests biomes (Tropical &amp; Subtropical Dry Broadleaf Forests and Tropical &amp; Subtropical Moist Broadleaf Forests). I excluded Tropical &amp; Subtropical Coniferous Forests because Gymnosperms don’t produce fruits.</p>
 <pre class="r"><code>TropicsDiversity &lt;- diversity %&gt;%
@@ -449,34 +421,6 @@ length(TropicsDiversity$Source_ID)</code></pre>
 <pre class="r"><code># Total number of species
 length(unique(TropicsDiversity$Best_guess_binomial))</code></pre>
 <pre><code>## [1] 14346</code></pre>
-<pre class="r"><code># Records per land-use and intensity level
-table(TropicsDiversity$Predominant_habitat, TropicsDiversity$Use_intensity)</code></pre>
-<pre><code>##                                           
-##                                            Minimal use Light use
-##   Primary forest                                282440    107393
-##   Primary non-forest                              7509      2733
-##   Young secondary vegetation                     62683     32868
-##   Intermediate secondary vegetation              62975     28209
-##   Mature secondary vegetation                    46834     10078
-##   Secondary vegetation (indeterminate age)       38511     32522
-##   Plantation forest                              80121     93766
-##   Pasture                                        29811     33422
-##   Cropland                                       28085     17278
-##   Urban                                           1249      7825
-##   Cannot decide                                      0         0
-##                                           
-##                                            Intense use Cannot decide
-##   Primary forest                                 35696         39375
-##   Primary non-forest                              1035             0
-##   Young secondary vegetation                       995         17667
-##   Intermediate secondary vegetation               2589         21746
-##   Mature secondary vegetation                     1216         10191
-##   Secondary vegetation (indeterminate age)          77         52762
-##   Plantation forest                              24122         14520
-##   Pasture                                         4064         18705
-##   Cropland                                       11785         23271
-##   Urban                                            211           270
-##   Cannot decide                                      6           272</code></pre>
 </div>
 <div id="selecting-bird-and-mammal-frugivores-in-the-predicts-dataset" class="section level4">
 <h4>2. Selecting bird and mammal frugivores in the PREDICTS dataset</h4>
@@ -490,10 +434,7 @@ table(TropicsDiversity$Predominant_habitat, TropicsDiversity$Use_intensity)</cod
   filter(Diet.Fruit &gt;= 50) %&gt;% 
   
   # Select the columns of scientific name, % of diet composed of fruits, and diet certainty level
-  select(Scientific, Diet.Fruit, Diet.Certainty)  %&gt;%
-  
-  # Create a column to differentiate mammal and bird records
-  mutate(Class = &quot;Mammalia&quot;) 
+  select(Scientific, Diet.Fruit, Diet.Certainty)  
 
 # Number of frugivore mammal species
 length(unique(Frugivore_mammals$Scientific))</code></pre>
@@ -509,10 +450,7 @@ length(unique(Frugivore_mammals$Scientific))</code></pre>
   
    # Select the columns of scientific name, % of diet composed of fruits, and diet certainty level
   select(Scientific, Diet.Fruit, Diet.Certainty)  %&gt;%
-  
-  # Create a column to differentiate mammal and bird records
-  mutate(Class = &quot;Aves&quot;) %&gt;% 
-  
+
   # Bind bird and mammal data
   rbind(Frugivore_mammals) %&gt;% 
   
@@ -560,38 +498,62 @@ length(PREDICTS_frugivores$Source_ID)</code></pre>
 length(unique(PREDICTS_frugivores$Best_guess_binomial))</code></pre>
 <pre><code>## [1] 456</code></pre>
 <pre class="r"><code>#  Number of records belonging to Birds and mammals
-table(PREDICTS_frugivores$Class.y)</code></pre>
+table(PREDICTS_frugivores$Class)</code></pre>
 <pre><code>## 
 ##     Aves Mammalia 
 ##    26247     2810</code></pre>
-<pre class="r"><code># Records per land-use and intensity level
-table(PREDICTS_frugivores$Predominant_habitat, PREDICTS_frugivores$Use_intensity)</code></pre>
+<pre class="r"><code># Total number of sourceIDs
+length(unique(PREDICTS_frugivores$Source_ID))</code></pre>
+<pre><code>## [1] 64</code></pre>
+<pre class="r"><code># Total number of studies
+length(unique(PREDICTS_frugivores$SS))</code></pre>
+<pre><code>## [1] 74</code></pre>
+<pre class="r"><code># Total number of sites
+length(unique(PREDICTS_frugivores$SSBS))</code></pre>
+<pre><code>## [1] 2472</code></pre>
+<p>The description of the habitat type is classified at the site level, however, each site has multiple records representing different species sampled. Therefore, it is necessary to get a unique record for each site to properly count how many sites there are for the predominant type and use intensity categories.</p>
+<pre class="r"><code># Function that returns the first record for each SSBS (SSBS = Concatenation of Source_ID, Study_number, Block and Site_number)
+  
+Number_sites_landuses &lt;- function(dataframe){
+# Get a vector with the SSBS names 
+Sites &lt;- dataframe %&gt;% pull(SSBS) %&gt;% as.character()
+# Find the index of the first match for each SSBS and eliminate the duplicates
+Indeces &lt;- match(Sites, dataframe$SSBS) %&gt;% unique()
+# Get a data frame with only the first matches of each SSBS
+justFirsts &lt;- dataframe[Indeces, ] 
+return(justFirsts)
+}</code></pre>
+<pre class="r"><code># Get the first record for each SSBS (SSBS = Concatenation of Source_ID, Study_number, Block and Site_number)
+justFirstsFrugivores &lt;- Number_sites_landuses(PREDICTS_frugivores)
+
+# Number of sites per land-use type and land-use intensity
+addmargins(table(justFirstsFrugivores$Predominant_habitat,justFirstsFrugivores$Use_intensity), 2)</code></pre>
 <pre><code>##                                           
 ##                                            Minimal use Light use
-##   Primary forest                                  6071      2937
-##   Primary non-forest                                48        32
-##   Young secondary vegetation                      1088       192
-##   Intermediate secondary vegetation               2720       362
-##   Mature secondary vegetation                      224       165
-##   Secondary vegetation (indeterminate age)         393        94
-##   Plantation forest                                762      3630
-##   Pasture                                            0        40
-##   Cropland                                        2503      1059
-##   Urban                                              0       160
+##   Primary forest                                   468       267
+##   Primary non-forest                                 6         4
+##   Young secondary vegetation                        65        11
+##   Intermediate secondary vegetation                 99        70
+##   Mature secondary vegetation                       18       137
+##   Secondary vegetation (indeterminate age)          43        21
+##   Plantation forest                                 34       360
+##   Pasture                                            0         8
+##   Cropland                                          78        21
+##   Urban                                              0        40
 ##   Cannot decide                                      0         0
 ##                                           
-##                                            Intense use Cannot decide
-##   Primary forest                                   476          1077
-##   Primary non-forest                                72             0
-##   Young secondary vegetation                         0           588
-##   Intermediate secondary vegetation                 23           646
-##   Mature secondary vegetation                        0           456
-##   Secondary vegetation (indeterminate age)           0           153
-##   Plantation forest                                436           414
-##   Pasture                                           12          1098
-##   Cropland                                         353           699
-##   Urban                                              8             0
-##   Cannot decide                                      0            66</code></pre>
+##                                            Intense use Cannot decide Sum
+##   Primary forest                                    59            47 841
+##   Primary non-forest                                 9             0  19
+##   Young secondary vegetation                         0            82 158
+##   Intermediate secondary vegetation                  2            39 210
+##   Mature secondary vegetation                        0            24 179
+##   Secondary vegetation (indeterminate age)           0            27  91
+##   Plantation forest                                 19            14 427
+##   Pasture                                            9           172 189
+##   Cropland                                          66            95 260
+##   Urban                                              1             0  41
+##   Cannot decide                                      0            57  57</code></pre>
 </div>
 <div id="selecting-plants-dispersed-by-endozoochory-in-the-predicts-dataset" class="section level4">
 <h4>3. Selecting plants dispersed by endozoochory in the PREDICTS dataset</h4>
@@ -1059,6 +1021,98 @@ table(PREDICTSendooPlants$Predominant_habitat, PREDICTSendooPlants$Use_intensity
 ##   Cropland                                        3120           528
 ##   Urban                                              0             0
 ##   Cannot decide                                      0             0</code></pre>
+<pre class="r"><code># Total number of sourceIDs
+length(unique(PREDICTSendooPlants$Source_ID))</code></pre>
+<pre><code>## [1] 39</code></pre>
+<pre class="r"><code># Total number of studies
+length(unique(PREDICTSendooPlants$SS))</code></pre>
+<pre><code>## [1] 51</code></pre>
+<pre class="r"><code># Total number of sites
+length(unique(PREDICTSendooPlants$SSBS))</code></pre>
+<pre><code>## [1] 2519</code></pre>
+<p>The description of the habitat type is classified at the site level, however, each site has multiple records representing different species sampled. Therefore, it is necessary to get a unique record for each site to properly count how many sites there are for the predominant type and use intensity categories.</p>
+<pre class="r"><code># Get the first record for each SSBS (SSBS = Concatenation of Source_ID, Study_number, Block and Site_number)
+justFirstsEndoPlants &lt;- Number_sites_landuses(PREDICTSendooPlants)
+
+# Number of sites per land-use type and land-use intensity
+addmargins(table(justFirstsEndoPlants$Predominant_habitat,justFirstsEndoPlants$Use_intensity), 2)</code></pre>
+<pre><code>##                                           
+##                                            Minimal use Light use
+##   Primary forest                                   474       121
+##   Primary non-forest                                 6         2
+##   Young secondary vegetation                       108        37
+##   Intermediate secondary vegetation                 75        86
+##   Mature secondary vegetation                       66        10
+##   Secondary vegetation (indeterminate age)          14        30
+##   Plantation forest                                232       346
+##   Pasture                                          261       150
+##   Cropland                                          34         0
+##   Urban                                              0         0
+##   Cannot decide                                      0         0
+##                                           
+##                                            Intense use Cannot decide Sum
+##   Primary forest                                   102            68 765
+##   Primary non-forest                                 0             0   8
+##   Young secondary vegetation                         0             4 149
+##   Intermediate secondary vegetation                  2            26 189
+##   Mature secondary vegetation                        6             0  82
+##   Secondary vegetation (indeterminate age)           0           124 168
+##   Plantation forest                                 43            12 633
+##   Pasture                                            4             0 415
+##   Cropland                                          60            16 110
+##   Urban                                              0             0   0
+##   Cannot decide                                      0             0   0</code></pre>
+</div>
+<div id="merge-the-filtered-data-of-frugivores-and-endozoochorous-plants" class="section level4">
+<h4>4. Merge the filtered data of frugivores and endozoochorous plants</h4>
+<pre class="r"><code># Eliminate columns that don&#39;t match between the two data frames
+PREDICTS_frugivores &lt;- PREDICTS_frugivores[,c(-90, -91)]
+
+# Bind the rows of frugivores to the PREDICTS endozoochorous plants data frame
+PREDICTS_frugivores_and_plants &lt;- rbind(PREDICTSendooPlants, PREDICTS_frugivores)
+
+# Total number of sourceIDs
+length(unique(PREDICTS_frugivores_and_plants$Source_ID))</code></pre>
+<pre><code>## [1] 99</code></pre>
+<pre class="r"><code># Total number of studies
+length(unique(PREDICTS_frugivores_and_plants$SS))</code></pre>
+<pre><code>## [1] 125</code></pre>
+<pre class="r"><code># Total number of sites
+length(unique(PREDICTS_frugivores_and_plants$SSBS))</code></pre>
+<pre><code>## [1] 4991</code></pre>
+<pre class="r"><code># Recalculate number of sites
+
+# Get the first record for each SSBS (SSBS = Concatenation of Source_ID, Study_number, Block and Site_number)
+justFirsts_Frugivores_and_plants &lt;- Number_sites_landuses(PREDICTS_frugivores_and_plants)
+
+# Number of sites per land-use type and land-use intensity
+addmargins(table(justFirsts_Frugivores_and_plants$Predominant_habitat,justFirsts_Frugivores_and_plants$Use_intensity), 2)</code></pre>
+<pre><code>##                                           
+##                                            Minimal use Light use
+##   Primary forest                                   942       388
+##   Primary non-forest                                12         6
+##   Young secondary vegetation                       173        48
+##   Intermediate secondary vegetation                174       156
+##   Mature secondary vegetation                       84       147
+##   Secondary vegetation (indeterminate age)          57        51
+##   Plantation forest                                266       706
+##   Pasture                                          261       158
+##   Cropland                                         112        21
+##   Urban                                              0        40
+##   Cannot decide                                      0         0
+##                                           
+##                                            Intense use Cannot decide  Sum
+##   Primary forest                                   161           115 1606
+##   Primary non-forest                                 9             0   27
+##   Young secondary vegetation                         0            86  307
+##   Intermediate secondary vegetation                  4            65  399
+##   Mature secondary vegetation                        6            24  261
+##   Secondary vegetation (indeterminate age)           0           151  259
+##   Plantation forest                                 62            26 1060
+##   Pasture                                           13           172  604
+##   Cropland                                         126           111  370
+##   Urban                                              1             0   41
+##   Cannot decide                                      0            57   57</code></pre>
 </div>
 </div>
 

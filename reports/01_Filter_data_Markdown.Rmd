@@ -46,9 +46,6 @@ length(diversity$Source_ID)
 # Total number of species
 length(unique(diversity$Best_guess_binomial))
 
-# Records per land-use and intensity level
-table(diversity$Predominant_habitat, diversity$Use_intensity)
-
 ```
 
 1.2. Filter tropics
@@ -82,9 +79,6 @@ length(TropicsDiversity$Source_ID)
 # Total number of species
 length(unique(TropicsDiversity$Best_guess_binomial))
 
-# Records per land-use and intensity level
-table(TropicsDiversity$Predominant_habitat, TropicsDiversity$Use_intensity)
-
 
 ```
 
@@ -110,10 +104,7 @@ Frugivore_mammals <- Mammal_Diet %>%
   filter(Diet.Fruit >= 50) %>% 
   
   # Select the columns of scientific name, % of diet composed of fruits, and diet certainty level
-  select(Scientific, Diet.Fruit, Diet.Certainty)  %>%
-  
-  # Create a column to differentiate mammal and bird records
-  mutate(Class = "Mammalia") 
+  select(Scientific, Diet.Fruit, Diet.Certainty)  
 
 # Number of frugivore mammal species
 length(unique(Frugivore_mammals$Scientific))
@@ -139,10 +130,7 @@ Frugivores <- Birds_Diet %>%
   
    # Select the columns of scientific name, % of diet composed of fruits, and diet certainty level
   select(Scientific, Diet.Fruit, Diet.Certainty)  %>%
-  
-  # Create a column to differentiate mammal and bird records
-  mutate(Class = "Aves") %>% 
-  
+
   # Bind bird and mammal data
   rbind(Frugivore_mammals) %>% 
   
@@ -197,7 +185,6 @@ Since all of the species names matched the ones in the Catalogue of Life, I will
 2.4. Get the records that belong to frugivore birds and mammals in the PREDICTS dataset 
 
 ```{r Merge frugivore data and PREDICTS data}
-
 # Merge both datasets and retain only the species of PREDICTS that match the species in the Frugivores table
 PREDICTS_frugivores <- merge(x=TropicsDiversity, y=Frugivores, by = "Best_guess_binomial", all.x = FALSE) %>%
   droplevels()
@@ -209,11 +196,43 @@ length(PREDICTS_frugivores$Source_ID)
 length(unique(PREDICTS_frugivores$Best_guess_binomial))
 
 #  Number of records belonging to Birds and mammals
-table(PREDICTS_frugivores$Class.y)
+table(PREDICTS_frugivores$Class)
 
-# Records per land-use and intensity level
-table(PREDICTS_frugivores$Predominant_habitat, PREDICTS_frugivores$Use_intensity)
+# Total number of sourceIDs
+length(unique(PREDICTS_frugivores$Source_ID))
 
+# Total number of studies
+length(unique(PREDICTS_frugivores$SS))
+
+# Total number of sites
+length(unique(PREDICTS_frugivores$SSBS))
+```
+
+The description of the habitat type is classified at the site level, however, each site has multiple records representing different species sampled. Therefore, it is necessary to get a unique record for each site to properly count how many sites there are for the predominant type and use intensity categories.  
+
+```{r Function first matches sites}
+
+# Function that returns the first record for each SSBS (SSBS = Concatenation of Source_ID, Study_number, Block and Site_number)
+  
+Number_sites_landuses <- function(dataframe){
+# Get a vector with the SSBS names 
+Sites <- dataframe %>% pull(SSBS) %>% as.character()
+# Find the index of the first match for each SSBS and eliminate the duplicates
+Indeces <- match(Sites, dataframe$SSBS) %>% unique()
+# Get a data frame with only the first matches of each SSBS
+justFirsts <- dataframe[Indeces, ] 
+return(justFirsts)
+}
+
+```
+
+
+```{r Get number of sites for Frugivores}
+# Get the first record for each SSBS (SSBS = Concatenation of Source_ID, Study_number, Block and Site_number)
+justFirstsFrugivores <- Number_sites_landuses(PREDICTS_frugivores)
+
+# Number of sites per land-use type and land-use intensity
+addmargins(table(justFirstsFrugivores$Predominant_habitat,justFirstsFrugivores$Use_intensity), 2)
 
 ```
 
@@ -610,10 +629,57 @@ length(PREDICTSendooPlants$Source_ID)
 # Total number of species
 length(unique(PREDICTSendooPlants$Best_guess_binomial))
 
-# Records per land-use and intensity level
-table(PREDICTSendooPlants$Predominant_habitat, PREDICTSendooPlants$Use_intensity)
+# Total number of sourceIDs
+length(unique(PREDICTSendooPlants$Source_ID))
+
+# Total number of studies
+length(unique(PREDICTSendooPlants$SS))
+
+# Total number of sites
+length(unique(PREDICTSendooPlants$SSBS))
+```
+
+The description of the habitat type is classified at the site level, however, each site has multiple records representing different species sampled. Therefore, it is necessary to get a unique record for each site to properly count how many sites there are for the predominant type and use intensity categories.  
+
+
+```{r Number of sites endozoochory PREDICTS}
+# Get the first record for each SSBS (SSBS = Concatenation of Source_ID, Study_number, Block and Site_number)
+justFirstsEndoPlants <- Number_sites_landuses(PREDICTSendooPlants)
+
+# Number of sites per land-use type and land-use intensity
+addmargins(table(justFirstsEndoPlants$Predominant_habitat,justFirstsEndoPlants$Use_intensity), 2)
 
 ```
+
+#### 4. Merge the filtered data of frugivores and endozoochorous plants 
+
+```{r merging data frames}
+
+# Eliminate columns that don't match between the two data frames
+PREDICTS_frugivores <- PREDICTS_frugivores[,c(-90, -91)]
+
+# Bind the rows of frugivores to the PREDICTS endozoochorous plants data frame
+PREDICTS_frugivores_and_plants <- rbind(PREDICTSendooPlants, PREDICTS_frugivores)
+
+# Total number of sourceIDs
+length(unique(PREDICTS_frugivores_and_plants$Source_ID))
+
+# Total number of studies
+length(unique(PREDICTS_frugivores_and_plants$SS))
+
+# Total number of sites
+length(unique(PREDICTS_frugivores_and_plants$SSBS))
+
+# Recalculate number of sites
+
+# Get the first record for each SSBS (SSBS = Concatenation of Source_ID, Study_number, Block and Site_number)
+justFirsts_Frugivores_and_plants <- Number_sites_landuses(PREDICTS_frugivores_and_plants)
+
+# Number of sites per land-use type and land-use intensity
+addmargins(table(justFirsts_Frugivores_and_plants$Predominant_habitat,justFirsts_Frugivores_and_plants$Use_intensity), 2)
+
+```
+
 
 
 

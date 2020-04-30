@@ -26,10 +26,10 @@ TropicsDiversity <- diversity %>%
   droplevels() 
 
 # Export table
-write.csv(TropicsDiversity, "./output/intermediate_files/01_Filter_data_Tropical_records.csv")
+saveRDS(TropicsDiversity, file = "./output/intermediate_files/01_Filter_data_Tropical_records.rds")
 
 # Import table
-TropicsDiversity <- read.csv("./output/intermediate_files/01_Filter_data_Tropical_records.csv")
+TropicsDiversity <- readRDS("./output/intermediate_files/01_Filter_data_Tropical_records.rds")
 
 # Number of records per region
 table(TropicsDiversity$Region)
@@ -61,10 +61,7 @@ Frugivore_mammals <- Mammal_Diet %>%
   filter(Diet.Fruit >= 50) %>% 
   
   # Select the columns of scientific name, % of diet composed of fruits, and diet certainty level
-  select(Scientific, Diet.Fruit, Diet.Certainty)  %>%
-  
-  # Create a column to differentiate mammal and bird records
-  mutate(Class = "Mammalia") 
+  select(Scientific, Diet.Fruit, Diet.Certainty)  
 
 # Number of frugivore mammal species
 length(unique(Frugivore_mammals$Scientific))
@@ -84,11 +81,8 @@ Frugivores <- Birds_Diet %>%
   # Select the columns of scientific name, % of diet composed of fruits, and diet certainty level
   select(Scientific, Diet.Fruit, Diet.Certainty)  %>%
   
-  # Create a column to differentiate mammal and bird records
-  mutate(Class = "Aves") %>% 
-  
   # Bind bird and mammal data
-  rbind(Frugivore_mammals) %>% 
+  rbind(Frugivore_mammals)  %>% 
   
   # Rename the scientific name column to match the PREDICTS dataset 
   rename(Best_guess_binomial = Scientific)
@@ -118,11 +112,14 @@ PREDICTS_frugivores <- merge(x=TropicsDiversity, y=Frugivores, by = "Best_guess_
 # Export table
 write.csv(PREDICTS_frugivores, "./output/cleaned_data/01_Filter_data_PREDICTS_Frugivores_records.csv")
 
+# Import table
+PREDICTS_frugivores <- read.csv("./output/cleaned_data/01_Filter_data_PREDICTS_Frugivores_records.csv")
+
 # Get the number of species in the new dataset
 length(unique(PREDICTS_frugivores$Best_guess_binomial))
 
 # Number of records belonging to Birds and mammals
-table(PREDICTS_frugivores$Class.y)
+table(PREDICTS_frugivores$Class)
 
 # Number of records belonging to different levels of uncertainty
 table(PREDICTS_frugivores$Diet.Certainty, PREDICTS_frugivores$Class.y)
@@ -133,8 +130,27 @@ table(PREDICTS_frugivores$Order, PREDICTS_frugivores$Class.y)
 # Number of records per order per region
 table(PREDICTS_frugivores$Order, PREDICTSfrugivores$Region)
 
-# Record per land-use and intensity level
+# Records per land-use and intensity level
 table(PREDICTS_frugivores$Predominant_habitat, PREDICTS_frugivores$Use_intensity)
+
+# Total number of sourceIDs
+length(unique(PREDICTS_frugivores$Source_ID))
+
+# Total number of studies
+length(unique(PREDICTS_frugivores$SS))
+
+# Total number of sites
+length(unique(PREDICTS_frugivores$SSBS))
+
+# Get the first record for each SSBS (SSBS = Concatenation of Source_ID, Study_number, Block and Site_number)
+justFirstsFrugivores <- Number_sites_landuses(PREDICTS_frugivores)
+
+# Number of sites per land-use type and land-use intensity
+addmargins(table(justFirstsFrugivores$Predominant_habitat,justFirstsFrugivores$Use_intensity), 2)
+
+
+# Export table of first matches
+write.csv(justFirstsFrugivores, "./output/intermediate_files/01_Filter_data_First_matches_frugivores.csv")
 
 # Filter plants with endozoochory in PREDICTS: ------------------------------------------------------
 
@@ -429,5 +445,50 @@ table(PREDICTSendooPlants$Order)
 # Number of records per region
 table(PREDICTSendooPlants$Region)
 
+# Total number of sourceIDs
+length(unique(PREDICTSendooPlants$Source_ID))
 
+# Total number of studies
+length(unique(PREDICTSendooPlants$SS))
+
+# Total number of sites
+length(unique(PREDICTSendooPlants$SSBS))
+
+# Get the first record for each SSBS (SSBS = Concatenation of Source_ID, Study_number, Block and Site_number)
+justFirstsEndoPlants <- Number_sites_landuses(PREDICTSendooPlants)
+
+# Number of sites per land-use type and land-use intensity
+addmargins(table(justFirstsEndoPlants$Predominant_habitat,justFirstsEndoPlants$Use_intensity), 2)
+
+# Export table of first matches
+write.csv(justFirstsEndoPlants, "./output/intermediate_files/01_Filter_data_First_matches_endoPlants.csv")
+
+# Merge PREDICTS frugivores data frame with the PREDICTS endozoochorous plants  -----------------------------------------
+
+# Eliminate columns that don't match between the two data frames
+PREDICTSendooPlants <- PREDICTSendooPlants[,c(-1,-3)]
+PREDICTS_frugivores <- PREDICTS_frugivores[,c(-1 ,-92, -91)]
+
+# Bind the rows of frugivores to the PREDICTS endozoochorous plants data frame
+PREDICTS_frugivores_and_plants <- rbind(PREDICTSendooPlants, PREDICTS_frugivores)
+
+# Total number of sourceIDs
+length(unique(PREDICTS_frugivores_and_plants$Source_ID))
+
+# Total number of studies
+length(unique(PREDICTS_frugivores_and_plants$SS))
+
+# Total number of sites
+length(unique(PREDICTS_frugivores_and_plants$SSBS))
+
+# Recalculate number of sites
+
+# Get the first record for each SSBS (SSBS = Concatenation of Source_ID, Study_number, Block and Site_number)
+justFirsts_Frugivores_and_plants <- Number_sites_landuses(PREDICTS_frugivores_and_plants)
+
+# Number of sites per land-use type and land-use intensity
+addmargins(table(justFirsts_Frugivores_and_plants$Predominant_habitat,justFirsts_Frugivores_and_plants$Use_intensity), 2)
+
+# Export table of first matches
+write.csv(justFirsts_Frugivores_and_plants, "./output/intermediate_files/01_Filter_data_First_matches_Frugivores_and_endoPlants.csv")
 
