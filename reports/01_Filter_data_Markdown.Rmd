@@ -2,7 +2,7 @@
 title: "01_Filter_data_Markdown"
 author: "Daniela Linero"
 date: "23/4/2020"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
