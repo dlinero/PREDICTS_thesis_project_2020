@@ -472,6 +472,12 @@ PREDICTS_frugivores <- PREDICTS_frugivores[,c(-1 ,-92, -91)]
 # Bind the rows of frugivores to the PREDICTS endozoochorous plants data frame
 PREDICTS_frugivores_and_plants <- rbind(PREDICTSendooPlants, PREDICTS_frugivores)
 
+# Export table 
+saveRDS(PREDICTS_frugivores_and_plants , "./output/cleaned_data/01_Filter_data_PREDICTS_Frugivores_and_Endoplants.rds")
+
+# Import table
+PREDICTS_frugivores_and_plants <- readRDS("./output/cleaned_data/01_Filter_data_PREDICTS_Frugivores_and_Endoplants.rds")
+
 # Total number of sourceIDs
 length(unique(PREDICTS_frugivores_and_plants$Source_ID))
 
