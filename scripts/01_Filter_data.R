@@ -472,11 +472,33 @@ PREDICTS_frugivores <- PREDICTS_frugivores[,c(-1 ,-92, -91)]
 # Bind the rows of frugivores to the PREDICTS endozoochorous plants data frame
 PREDICTS_frugivores_and_plants <- rbind(PREDICTSendooPlants, PREDICTS_frugivores)
 
+# # Add class
+# There are some rows that do not have information on the Kingdom or class, since class is going to
+# be used as an interaction term in the model, I am going to complete that information. 
+
+Noclass_kingdom  <- which(PREDICTS_frugivores_and_plants$Class == "" | PREDICTS_frugivores_and_plants$Kingdom == "")
+List_sp <- as.data.frame(unique(PREDICTS_frugivores_and_plants[Noclass_kingdom, 1]))
+PREDICTS_frugivores_and_plants[c(15717), c(1, 75, 76, 77, 78)]
+
+
+# This loop searches for the index of species that do not have Kingdom or Class details, and 
+# adds the information in the corresponding rows
+for (i in Noclass_kingdom) {
+  
+  # Manually add the species that lack information and their kingdom and class
+  if (PREDICTS_frugivores_and_plants[i, 1] %in% List_sp[,1]) { 
+    PREDICTS_frugivores_and_plants[i, 75] <- "Plantae" 
+    PREDICTS_frugivores_and_plants[i, 77] <- "Magnoliopsida"
+  }
+}
+
+
 # Export table 
 saveRDS(PREDICTS_frugivores_and_plants , "./output/cleaned_data/01_Filter_data_PREDICTS_Frugivores_and_Endoplants.rds")
 
 # Import table
 PREDICTS_frugivores_and_plants <- readRDS("./output/cleaned_data/01_Filter_data_PREDICTS_Frugivores_and_Endoplants.rds")
+
 
 # Total number of sourceIDs
 length(unique(PREDICTS_frugivores_and_plants$Source_ID))
@@ -497,4 +519,5 @@ addmargins(table(justFirsts_Frugivores_and_plants$Predominant_habitat,justFirsts
 
 # Export table of first matches
 write.csv(justFirsts_Frugivores_and_plants, "./output/intermediate_files/01_Filter_data_First_matches_Frugivores_and_endoPlants.csv")
+
 
