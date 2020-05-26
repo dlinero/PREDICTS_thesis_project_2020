@@ -17,6 +17,7 @@ library(lme4) # for mixed effects models
 library(car) # for getting anova tables with significance values
 library(DHARMa) # for model criticism plots
 library(MuMIn) # for checking explanatory power of mixed effects models
+library(stringr)
 
 # If you’re working with a raw extract from the PREDICTS database, it will have diversity and the date it was extracted in the name.
 
@@ -128,7 +129,9 @@ sites <- sites %>%
     # indeterminate secondary veg and cannot decide get NA
     Predominant_land_use = na_if(Predominant_land_use, "Secondary vegetation (indeterminate age)"),
     Predominant_land_use = na_if(Predominant_land_use, "Cannot decide"),
+    Use_intensity =  as.character(Use_intensity), 
     Use_intensity = na_if(Use_intensity, "Cannot decide"),
+
     
     # set reference levels
     Predominant_land_use = factor(Predominant_land_use),
@@ -140,4 +143,80 @@ sites <- sites %>%
 
 # take a look at the LandUse/Use intensity split
 table(sites$Predominant_land_use, sites$Use_intensity)
+
+# Number of studies where the abundance is not an integer
+f <- which(sites$Total_abundance < 1 & sites$Total_abundance > 0)
+
+
+### 2. Model Site level diversity --------------------------------------------------------------
+
+# Collinearity: ---------------------------------------------------------------
+
+# Ok, so let’s check whether any of the candidate explanatory variables are strongly correlated 
+# with one another. You can look at the linear correlations between variables (using cor.test)
+# or correlations between continuous and categorical variables (using aov). However, we tend to
+# have multiple categorical varialbes. A good alternative is to look at Generalized Variance 
+# Inflation Factors. You can use a function provided by the Zuur book.
+
+source("https://highstat.com/Books/Book2/HighstatLibV10.R")
+
+corvif(sites[ , c("Predominant_land_use", "Use_intensity")])
+
+# There are different ‘rules of thumb’ about how high is too high when it comes to GVIFs. 
+# Under 3 is great and under 5 is ok. Some people also say under 10 is acceptable, but I 
+# think that’s a bit too high personally.
+
+# If collinearity is a problem, then you’ll need to consider which variables are most important
+# to include and what ones can be dropped.
+
+# Complete cases: ------------------------------------------------------------
+
+model_data <- drop_na(sites, 
+                      Total_abundance, Predominant_land_use, Use_intensity)
+
+# Starting maximal model: ----------------------------------------------------------
+
+# We’ll start by modelling Total_abundance. The maximal model is the most complex model you want 
+# to test. There’s a limit to how complicated this can or should be. Think carefully about what 
+# variables you want to test and what variables you might need to control for, and think carefully
+# about what interactions are likely to be important.
+
+# If you’re analysing count data, you might also find that there are far too many zeros in your data
+# than you’d expect given a poisson distribution. If this is the case, you will need to consider 
+# using a zero-inflated poisson distribution or a hurdle model. Neither of these are available
+# in lme4; if you want to use lme4, you can use a ‘modified’ hurdle model by first modelling 
+# the probability of species occurrence and then modelling the abundance of species that are 
+# present.
+
+hist(model_data$RescaledAbundance) # Bound to zero
+
+# First, let’s transform RescaledAbundance.
+
+model_data <- mutate(model_data, 
+                     logAbundance = log(RescaledAbundance + 1),
+                     sqrtAbundance = sqrt(RescaledAbundance)
+)
+
+hist(model_data$logAbundance) 
+hist(model_data$sqrtAbundance)
+
+m1 <- lmer(sqrtAbundance ~ Predominant_land_use + Use_intensity + 
+             Predominant_land_use:Use_intensity + 
+             (1|SS) + (1|SSB), data = model_data)
+
+# fixed-effect model matrix is rank deficient so dropping 12 columns / coefficients
+# boundary (singular) fit: see ?isSingular
+
+# Coarsen factor levels
+model_data1 <- model_data %>% filter(Predominant_land_use != "Urban") %>% droplevels() %>%
+  mutate(Use_intensity = str_replace_all(Use_intensity, pattern = c("Intense use" = "Intense light use",
+                                                "Light use" = "Intense light use")), 
+         Use_intensity = factor(Use_intensity),
+         Use_intensity = relevel(Use_intensity, ref = "Minimal use")) %>% filter(sqrtAbundance != 0) %>% droplevels()
+
+table(model_data1$Predominant_land_use, model_data1$Use_intensity)
+
+m1 <- lmer(sqrtAbundance ~ Predominant_land_use + Use_intensity + 
+             Predominant_land_use:Use_intensity + 
+             (1|SS) + (1|SSB), data = model_data1)
 
