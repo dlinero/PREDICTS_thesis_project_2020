@@ -60,6 +60,8 @@ Frugivore_mammals <- Mammal_Diet %>%
   # Filter mammals that have a diet composed of at least 50% fruit
   filter(Diet.Fruit >= 50) %>% 
   
+  droplevels() %>% 
+  
   # Select the columns of scientific name, % of diet composed of fruits, and diet certainty level
   select(Scientific, Diet.Fruit, Diet.Certainty)  
 
@@ -77,6 +79,8 @@ Frugivores <- Birds_Diet %>%
   
   # Filter birds that have a diet composed of at least 50% fruits
   filter(Diet.Fruit >= 50) %>%
+  
+  droplevels() %>% 
   
   # Select the columns of scientific name, % of diet composed of fruits, and diet certainty level
   select(Scientific, Diet.Fruit, Diet.Certainty)  %>%
@@ -96,13 +100,13 @@ Frugivore_Names <- as.character(Frugivores$Best_guess_binomial)
 sources <- gnr_datasources() 
 
 # Get the submitted species names and the corresponding name used in the Catalogue of Life (id = 1)
-Frugivore_Names<- gnr_resolve(names = Frugivore_Names, data_source_ids = 1) %>% 
+Frugivore_Names_Check <- gnr_resolve(names = Frugivore_Names, data_source_ids = 1) %>% 
   
   # Identify records that have a different name in the Catalogue of Life (if the name is the same
   # the score will be 0.988)
   subset(score < 0.98) 
 
-write.csv(Frugivore_Names, "./output/intermediate_files/01_Filter_data_Frugivores_nomenclature_check.csv")
+write.csv(Frugivore_Names, "./output/intermediate_files/01_Filter_data_Frugivores_names.csv", row.names = FALSE)
 # Get the records that belong to frugivore birds and mammals in the PREDICTS dataset 
 
 # Merge both datasets and retain only the species of PREDICTS that match the species in the Frugivores table
@@ -478,14 +482,12 @@ PREDICTS_frugivores_and_plants <- rbind(PREDICTSendooPlants, PREDICTS_frugivores
 
 Noclass_kingdom  <- which(PREDICTS_frugivores_and_plants$Class == "" | PREDICTS_frugivores_and_plants$Kingdom == "")
 List_sp <- as.data.frame(unique(PREDICTS_frugivores_and_plants[Noclass_kingdom, 1]))
-PREDICTS_frugivores_and_plants[c(15717), c(1, 75, 76, 77, 78)]
-
 
 # This loop searches for the index of species that do not have Kingdom or Class details, and 
 # adds the information in the corresponding rows
 for (i in Noclass_kingdom) {
   
-  # Manually add the species that lack information and their kingdom and class
+  # add  information of kingdom and class 
   if (PREDICTS_frugivores_and_plants[i, 1] %in% List_sp[,1]) { 
     PREDICTS_frugivores_and_plants[i, 75] <- "Plantae" 
     PREDICTS_frugivores_and_plants[i, 77] <- "Magnoliopsida"
@@ -519,5 +521,4 @@ addmargins(table(justFirsts_Frugivores_and_plants$Predominant_habitat,justFirsts
 
 # Export table of first matches
 write.csv(justFirsts_Frugivores_and_plants, "./output/intermediate_files/01_Filter_data_First_matches_Frugivores_and_endoPlants.csv")
-
 
