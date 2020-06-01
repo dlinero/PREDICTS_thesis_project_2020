@@ -21,62 +21,53 @@ library(stringr)
 
 # If you’re working with a raw extract from the PREDICTS database, it will have diversity and the date it was extracted in the name.
 
-# Im going to upload my filtered table
+# ---- 1. Load data ------------------------------------------------------------------
 
-diversity <- readRDS("./output/cleaned_data/01_Filter_data_PREDICTS_Frugivores_and_Endoplants.rds")
-diversity$Sample_start_earliest <- as.Date(diversity$Sample_start_earliest)
-diversity$Sample_end_latest <- as.Date(diversity$Sample_end_latest)
-diversity$Site_area <- as.numeric(diversity$Site_area)
-diversity$Site_area_unit <- as.factor(diversity$Site_area_unit)
+diversity <- readRDS("./output/cleaned_data/01_Filter_data_PREDICTS_Filtered_table.rds")
 
-diversity_all <- readRDS("./data/PREDICTS2020/PREDICTS2020.rds")
-diversity_all <- diversity_all[1:10000, ]
+# ---- 2. Correct abundance measures using Sampling effort 
 
 # The next thing is correct for differences in sampling effort across sites within a single study.
 # This rescales sampling effort for each study to have a maximum value of 1, and then divides any 
 # diversity measurements that are sensitive to sampling effort by this rescaled measure of relative effort.
 
-
 # What the CorrectSamplingEffort function does is grouping the dataset by SS, findind the maximum value
 # of Sampling effort, dividing every sampling effort value by the maximum value within each study. This gives the
-# rescaled sampling effort. The it takes the measurement and divides it by the rescaled sampling effor. 
+# rescaled sampling effort. Then it takes the measurement and divides it by the rescaled sampling effort. 
 
-diversity <- yarg::CorrectSamplingEffort(diversity) 
-diversity_all <- yarg::CorrectSamplingEffort(diversity_all)
+diversity1 <- yarg::CorrectSamplingEffort(diversity) 
+
+# Export_table
+saveRDS(diversity1, "output/intermediate_files/02_Analysis_walkthrough_Effort_corrected_measures")
+
+# ---- 3. Merge Sites -------------------------------------------------------------
 
 # Next we’ll merge any sites that are within the same land-use type and that have identical
 # coordinates, start and end dates.
 
-# -----------------------------------------------------------------------
-# I'm getting an error: 
-# Error in yarg::MergeSites(diversity, silent = TRUE, merge.extra = "Wilderness_area") : 
-# length(overwrite) == length(measurements) is not TRUE
+# We merge sites within studies that have identical coordinates, start and end dates(and land-use 
+# type and intensity). We do this because sometimes authors record different points in a transect as
+# different sites, which might not be meaningful if they share land-use, intensity and coordinates (the
+# coordinates have an error) OR maybe it is, but we are having a conservative approach
 
-# synthesize.cols and setdiff(colnames(diversity), c(match.cols, site.level.merge.cols,  .... are not equal:
-# Lengths (8, 37) differ (string compare on first 8)
-# 8 string mismatches
-
-
-setdiff(diversity, diversity_all)
-diversity <- yarg::MergeSites(diversity,
+diversity2 <- yarg::MergeSites(diversity1,
                               silent = TRUE,
                               merge.extra = "Wilderness_area")
 
-diversity_all <- yarg::MergeSites(diversity_all,
-                              silent = TRUE,
-                              merge.extra = "Wilderness_area")
+# Export table
+saveRDS(diversity2, "output/intermediate_files/02_Analysis_walkthrough_Merged_sites")
 
-# --------------------------------------------------------------------------
+# ----4. Rename Predominant habitat --------------------------------------------------
 
 # Rename the Predominant_habitat column, since it’s not really “habitat” that we’re looking at.
 # This will also keep things a little more consistent with the public version of the PREDICTS database.
 
-diversity <- rename(diversity,
+diversity2 <- rename(diversity2,
                     Predominant_land_use = Predominant_habitat)
 
-### 1. Calculate diversity metrics -----------------------------------------------
+# ----5.  Calculate diversity metrics -----------------------------------------------
 
-sites <- diversity %>%
+diversity3 <- diversity2 %>%
   
   # add Diversity_metric_is_valid column
   mutate(Diversity_metric_is_valid = TRUE) %>%
@@ -84,7 +75,7 @@ sites <- diversity %>%
   # The extra.cols parameter is used for columns that we want to 
   # transferred to the final site-level data frame and that the function 
   # does not add  automatically
-  yarg::SiteMetrics(extra.cols = c("SSB", "SSBS", "Predominant_land_use")) %>% 
+  yarg::SiteMetrics(extra.cols = c("SSB", "SSBS", "Predominant_land_use", "Kingdom")) %>% 
   
   # calculate the maximum abundance within each study
   group_by(SS) %>%
@@ -98,26 +89,22 @@ sites <- diversity %>%
                                     Total_abundance/MaxAbundance,
                                     NA))
 
-### --------------------------- Total abundance try ---------------------------------------------
-# I'm getting this warning message when running the SiteMetrics Warning message:
-# In min(x[x > 0]) : no non-missing arguments to min; returning Inf
+# Export table
+saveRDS(diversity3, file = "./output/intermediate_files/02_Analysis_walkthrough_Site_metrics.rds")
+
+# Import table
+
+diversity3 <- readRDS("./output/intermediate_files/02_Analysis_walkthrough_Site_metrics.rds")
 
 
-# I'm not getting the same results if I do the operations only for one site
+# take a look at the LandUse/Use intensity split
+table(diversity3$Predominant_land_use, diversity3$Use_intensity, diversity3$Kingdom)
 
-TotaAbundance <- diversity %>% filter(SSS == "BS1_2010__Page 1 1") %>% select(Best_guess_binomial, Diversity_metric, 
-                                                                              Diversity_metric_unit, Measurement, SS, SSS) %>%
-  mutate(Total_Abundance = sum(Measurement), Species_richness = length(unique(Best_guess_binomial))) 
-
-TotaAbundance2 <- diversity %>% filter(SSS == "BS1_2010__Page 1 2") %>% select(Best_guess_binomial, Diversity_metric, 
-                                                                       Diversity_metric_unit, Measurement, SS, SSS) %>%
-  mutate(Total_Abundance = sum(Measurement), Species_richness = length(unique(Best_guess_binomial))) 
-
-### ---------------------------------------------------------------------------------------------------
+# ----6. Tidy up land-use column ---------------------------------------------------------------
 
 # The Predominant_land_use column holds the land use categories. They often need some tidying up.
 
-sites <- sites %>%
+diversity4 <- diversity3 %>%
   
   mutate(
     
@@ -126,11 +113,10 @@ sites <- sites %>%
                                          "Primary forest" = "Primary", 
                                          "Primary non-forest" = "Primary"),
     
-    # indeterminate secondary veg and cannot decide get NA
+    # indeterminate secondary veg and cannot decide get NA, urban too beacuse there are only 40 sites
     Predominant_land_use = na_if(Predominant_land_use, "Secondary vegetation (indeterminate age)"),
     Predominant_land_use = na_if(Predominant_land_use, "Cannot decide"),
-    Use_intensity =  as.character(Use_intensity), 
-    Use_intensity = na_if(Use_intensity, "Cannot decide"),
+    Predominant_land_use = na_if(Predominant_land_use, "Urban"),
 
     
     # set reference levels
@@ -142,13 +128,21 @@ sites <- sites %>%
 
 
 # take a look at the LandUse/Use intensity split
-table(sites$Predominant_land_use, sites$Use_intensity)
+table(diversity4$Predominant_land_use, diversity4$Use_intensity, diversity4$Kingdom)
 
-# Number of studies where the abundance is not an integer
-f <- which(sites$Total_abundance < 1 & sites$Total_abundance > 0)
+########################################### FIRST ATTEMPT #################################
+
+# So, in this first attempt I'm just going to model (log(Abundance) + 1), without any interactions 
+# with kingdom. I'm also going to join all the light and intense uses. 
 
 
-### 2. Model Site level diversity --------------------------------------------------------------
+diversity5 <- diversity4 %>%  mutate(Use_intensity = str_replace_all(Use_intensity, pattern = c("Intense use" = "Intense light use",
+                                                                    "Light use" = "Intense light use")), 
+         Use_intensity = na_if(Use_intensity, "Cannot decide"),
+         Use_intensity = factor(Use_intensity),
+         Use_intensity = relevel(Use_intensity, ref = "Minimal use")) 
+
+table(diversity5$Predominant_land_use, diversity5$Use_intensity)
 
 # Collinearity: ---------------------------------------------------------------
 
@@ -160,7 +154,7 @@ f <- which(sites$Total_abundance < 1 & sites$Total_abundance > 0)
 
 source("https://highstat.com/Books/Book2/HighstatLibV10.R")
 
-corvif(sites[ , c("Predominant_land_use", "Use_intensity")])
+corvif(diversity5[ , c("Predominant_land_use", "Use_intensity")])
 
 # There are different ‘rules of thumb’ about how high is too high when it comes to GVIFs. 
 # Under 3 is great and under 5 is ok. Some people also say under 10 is acceptable, but I 
@@ -171,8 +165,14 @@ corvif(sites[ , c("Predominant_land_use", "Use_intensity")])
 
 # Complete cases: ------------------------------------------------------------
 
-model_data <- drop_na(sites, 
-                      Total_abundance, Predominant_land_use, Use_intensity)
+# By dropping the sites that have a total abundance of NA, we are excluding the sites with a 
+# diversity metric type of occurrence. 
+
+model_data5 <- drop_na(diversity5, 
+                      Total_abundance, Predominant_land_use, Use_intensity) %>% droplevels()
+
+table(model_data5$Predominant_land_use, model_data5$Use_intensity)
+
 
 # Starting maximal model: ----------------------------------------------------------
 
@@ -188,25 +188,36 @@ model_data <- drop_na(sites,
 # the probability of species occurrence and then modelling the abundance of species that are 
 # present.
 
-hist(model_data$RescaledAbundance) # Bound to zero
+hist(model_data5$RescaledAbundance) # Bound to zero
 
 # First, let’s transform RescaledAbundance.
 
-model_data <- mutate(model_data, 
+model_data5 <- mutate(model_data5, 
                      logAbundance = log(RescaledAbundance + 1),
                      sqrtAbundance = sqrt(RescaledAbundance)
 )
 
-hist(model_data$logAbundance) 
-hist(model_data$sqrtAbundance)
+hist(model_data5$logAbundance) 
+hist(model_data5$sqrtAbundance)
 
-m1 <- lmer(sqrtAbundance ~ Predominant_land_use + Use_intensity + 
-             Predominant_land_use:Use_intensity + 
-             (1|SS) + (1|SSB), data = model_data)
+m1 <- lmer(logAbundance ~ Predominant_land_use + Use_intensity + 
+             Predominant_land_use*Use_intensity + 
+             (1|SS) + (1|SSB), data = model_data5)
 
-# fixed-effect model matrix is rank deficient so dropping 12 columns / coefficients
-# boundary (singular) fit: see ?isSingular
+summary(m1)
 
+
+
+
+
+
+
+
+
+
+###########################################################################################################
+
+ 
 # Coarsen factor levels
 model_data1 <- model_data %>% filter(Predominant_land_use != "Urban") %>% droplevels() %>%
   mutate(Use_intensity = str_replace_all(Use_intensity, pattern = c("Intense use" = "Intense light use",
@@ -219,4 +230,8 @@ table(model_data1$Predominant_land_use, model_data1$Use_intensity)
 m1 <- lmer(sqrtAbundance ~ Predominant_land_use + Use_intensity + 
              Predominant_land_use:Use_intensity + 
              (1|SS) + (1|SSB), data = model_data1)
+
+
+
+
 
