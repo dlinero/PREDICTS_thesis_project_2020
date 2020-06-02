@@ -89,6 +89,18 @@ diversity3 <- diversity2 %>%
                                     Total_abundance/MaxAbundance,
                                     NA))
 
+# Check results
+# Check the results of the function SiteMetrics for a specific study
+diversity3 %>% filter(SSS == "CM1_2012__Katovai 1 43") %>% select(SSS, Total_abundance, Species_richness, 
+                                                                  MaxAbundance, RescaledAbundance)
+
+# Calculate total abundance and species richness for one study and see if it matches
+# the results of the SiteMetrics function
+diversity2 %>%
+  filter(SSS == "CM1_2012__Katovai 1 43") %>%
+  select(Taxon_name_entered, Measurement, SSS) %>%
+  mutate(Total_Abundance = sum(Measurement), Species_richness = length(unique(Taxon_name_entered)))
+
 # Export table
 saveRDS(diversity3, file = "./output/intermediate_files/02_Analysis_walkthrough_Site_metrics.rds")
 
@@ -132,7 +144,7 @@ table(diversity4$Predominant_land_use, diversity4$Use_intensity, diversity4$King
 
 ########################################### FIRST ATTEMPT #################################
 
-# So, in this first attempt I'm just going to model (log(Abundance) + 1), without any interactions 
+# So, in this first attempt I'm just going to model sqrt(abundance), without any interactions 
 # with kingdom. I'm also going to join all the light and intense uses. 
 
 
@@ -166,13 +178,12 @@ corvif(diversity5[ , c("Predominant_land_use", "Use_intensity")])
 # Complete cases: ------------------------------------------------------------
 
 # By dropping the sites that have a total abundance of NA, we are excluding the sites with a 
-# diversity metric type of occurrence. 
+# diversity metric type equal to occurrence. 
 
 model_data5 <- drop_na(diversity5, 
                       Total_abundance, Predominant_land_use, Use_intensity) %>% droplevels()
 
 table(model_data5$Predominant_land_use, model_data5$Use_intensity)
-
 
 # Starting maximal model: ----------------------------------------------------------
 
@@ -188,6 +199,7 @@ table(model_data5$Predominant_land_use, model_data5$Use_intensity)
 # the probability of species occurrence and then modelling the abundance of species that are 
 # present.
 
+# Let's do some data explorations
 hist(model_data5$RescaledAbundance) # Bound to zero
 
 # First, let’s transform RescaledAbundance.
@@ -200,38 +212,164 @@ model_data5 <- mutate(model_data5,
 hist(model_data5$logAbundance) 
 hist(model_data5$sqrtAbundance)
 
-m1 <- lmer(logAbundance ~ Predominant_land_use + Use_intensity + 
-             Predominant_land_use*Use_intensity + 
+
+ggplot(model_data5, aes(x=Predominant_land_use, y= RescaledAbundance, color= Use_intensity)) + 
+  geom_boxplot()
+
+# Now try some models
+
+m1 <- lmer(sqrtAbundance ~ Predominant_land_use + Use_intensity +
+             Predominant_land_use:Use_intensity + 
              (1|SS) + (1|SSB), data = model_data5)
 
-summary(m1)
+# Choose the random effects: -------------------------------------------------------------
+
+# To select the random-effects structure, we use the method recommended by (Zuur et al., 2009) 
+# of taking the most complex fixed-effects structure, including all interactions, that will be 
+# tested in the second stage of modelling, and use it to compare different random-effects 
+# structures.
+
+# Study identity is always included as a random intercept because of the differences in the 
+# diversity metrics that will be caused by the fundamental differences in methods, sampling effort
+# etc. among different studies. We also tend to include block as a random intercept, to account 
+# for the spatial configuration of sites. We can also include random slopes within study, to 
+# allow the effects of explanatory variables to vary among studies. You may also wish you 
+# include Source as a random intercept.
+
+m2 <- lmer(sqrtAbundance ~ Predominant_land_use + Use_intensity +
+             Predominant_land_use:Use_intensity + 
+             (1+Predominant_land_use|SS) + (1|SSB), data = model_data5)
+# boundary (singular) fit: see ?isSingular
+# isSingular(m2) == TRUE
+
+m3 <- lmer(sqrtAbundance ~ Predominant_land_use + Use_intensity + 
+             Predominant_land_use:Use_intensity + 
+             (1+Use_intensity|SS) + (1|SSB), data = model_data5)
+
+# compare the models that converged using Akaike's Information Criterion (AIC)
+AIC(m1, m2, m3)
+
+# The lowest AIC value is the best model of the bunch. In this case, m2. However m2 has a warning
+# so I'm going to choose m3. This has Study (SS) and Block (SSB) as random intercepts and a
+# random slope of Use_intensity.
+# This means that we’re allowing the effect of use_intensity on abundance to vary among studies.
+# We’re not going to go into detail about this here.
+
+# Choose the best fixed effect structure: -------------------------------------------------------------
+# Let’s assess the fixed effects in this model.
+
+Anova(m3)
+
+# The Predominant_land_use:Use_intensity interaction is significant, so we can’t remove this term 
+# from the model. This means that even if the main effects (LandUse and Use_intensity) weren’t
+# significant, we wouldn’t want to remove them from the model.
+
+# The same is true for the Predominant_land_use:loghpd interaction. But let’s imagine it wasn’t 
+# significant. Let’s go through the model simplification process. We start with the most
+# complicated, least significant effect and try to remove it from the model. In this case, it is
+# Predominant_land_use:loghpd.
+
+# m3.1 <- update(m3,~.- Predominant_land_use:loghpd)
+
+# Next, we will check if we’ve lost a significant amount of explanatory power by removing this 
+# interaction. If we have, we want to keep the more complex model. If we haven’t lost a 
+# significant amount of explanatory power, then we can keep this simpler model. 
+# The test we’ll use is a likelihood ratio test (LRT).
+
+# anova(m3.1, m3)
+
+# Note that the Likelihood Ratio Test refits the models with Maximimum Likelihood. 
+# This is best when testing different fixed effects, but when testing different random effects,
+# the models should be fit using Restricted Maximum Likelihood (REML, the default option).
+
+# The LRT is significant, so by removing the interaction from the model, we have lost a significant 
+# amount of explanatory power. This means that we should keep the more complex model. 
+# If it wasn’t significant, we would go with the simpler model and look at the Anova table
+# again and remove the next most complicated, least significant term and repeat the process
+# until everything left in the model is significant (this is backwards stepwise model simplification).
+# The remaining model is our minimum adequate model.
+
+# Interpretation: -------------------------------------------------------------
+
+# Now let’s look at the model estimates of our mimumum adequate model 
+# (which in our case is also our maximal model).
+
+summary(m3)
+
+# Plot residuals: ----------------------------------------------------------------
+
+plot(m3)
+#  for a correctly specified model we would expect assymptotically:
+# *a uniform (flat) distribution of the scaled residuals
+# * uniformity in y direction if we plot against any predictor.
+
+# Simulate the residuals and plot them
+simulationOutput <- simulateResiduals(fittedModel = m3, plot = T)
+
+# Acces the qq plot
+plotQQunif(simulationOutput)
+# Plot the residuals against the predicted value 
+plotResiduals(simulationOutput)
+
+# Plot the results: -------------------------------------------------------------
 
 
+roquefort::PlotErrBar(model = m3,
+                      data = model_data5,
+                      responseVar = "sqrt(Rescaled Abundance)",
+                      seMultiplier = 1.96,
+                      secdAge = TRUE,
+                      logLink = "n",
+                      catEffects = c("Predominant_land_use"),
+                      forPaper = TRUE,
+                      plotLabels = FALSE)
 
 
+# Note that we usually collapse Land Use and Use intensity into a single factor - this makes plotting
+# the results a little simpler, but it can make simplifying the model a little more complicated.
 
-
-
-
-
+# You can also use PlotContEffects in the roquefort package to plot PREDICTS models to see how human
+# population density responds to land-use change.
 
 ###########################################################################################################
 
  
-# Coarsen factor levels
-model_data1 <- model_data %>% filter(Predominant_land_use != "Urban") %>% droplevels() %>%
-  mutate(Use_intensity = str_replace_all(Use_intensity, pattern = c("Intense use" = "Intense light use",
-                                                "Light use" = "Intense light use")), 
-         Use_intensity = factor(Use_intensity),
-         Use_intensity = relevel(Use_intensity, ref = "Minimal use")) %>% filter(sqrtAbundance != 0) %>% droplevels()
 
-table(model_data1$Predominant_land_use, model_data1$Use_intensity)
-
-m1 <- lmer(sqrtAbundance ~ Predominant_land_use + Use_intensity + 
+# with log
+m12 <- lmer(logAbundance ~ Predominant_land_use + Use_intensity +
              Predominant_land_use:Use_intensity + 
-             (1|SS) + (1|SSB), data = model_data1)
+             (1|SS) + (1|SSB), data = model_data5)
+m22 <- lmer(logAbundance ~ Predominant_land_use + Use_intensity +
+             Predominant_land_use:Use_intensity + 
+             (1+Predominant_land_use|SS) + (1|SSB), data = model_data5)
+# boundary (singular) fit: see ?isSingular
+# isSingular(m2) == TRUE
 
+m32 <- lmer(logAbundance ~ Predominant_land_use + Use_intensity + 
+             Predominant_land_use:Use_intensity + 
+             (1+Use_intensity|SS) + (1|SSB), data = model_data5)
 
+# compare the models that converged using Akaike's Information Criterion (AIC)
+AIC(m12, m22, m32)
 
+Anova(m32)
 
+summary(m32)
+plot(m32)
 
+# Simulate the residuals and plot them
+simulationOutput <- simulateResiduals(fittedModel = m32, plot = T)
+
+# Acces the qq plot
+plotQQunif(simulationOutput)
+plotResiduals(simulationOutput)
+
+roquefort::PlotErrBar(model = m32,
+                      data = model_data5,
+                      responseVar = "log Abundance",
+                      seMultiplier = 1.96,
+                      secdAge = TRUE,
+                      logLink = "n",
+                      catEffects = c("Predominant_land_use", "Use_intensity"),
+                      forPaper = TRUE,
+                      plotLabels = FALSE)
