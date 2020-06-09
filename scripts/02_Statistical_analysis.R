@@ -12,7 +12,8 @@ library(lme4) # for mixed effects models
 library(car) # for getting anova tables with significance values
 library(DHARMa) # for model criticism plots
 library(MuMIn) # for checking explanatory power of mixed effects models
-library(stringr)
+library(stringr) # to replace text
+library(lmerTest) # to get p-values for estimates in LMMs
 
 # ---- 1. Load data ------------------------------------------------------------------
 
@@ -45,6 +46,13 @@ diversity2 <- rename(diversity2,
                      Predominant_land_use = Predominant_habitat)
 
 
+# See abundance measures
+animals <- diversity2 %>% subset(Diversity_metric_type == "Abundance" & Kingdom == "Animalia") %>% droplevels()
+levels(animals$Diversity_metric_unit)
+
+plants <- diversity2 %>% subset(Diversity_metric_type == "Abundance" & Kingdom == "Plantae") %>% droplevels()
+levels(plants$Diversity_metric_unit)
+
 # ----5.  Calculate diversity metrics -----------------------------------------------
 
 diversity3 <- diversity2 %>%
@@ -68,11 +76,6 @@ diversity3 <- diversity2 %>%
   mutate(RescaledAbundance = ifelse(Diversity_metric_type == "Abundance",
                                     Total_abundance/MaxAbundance,
                                     NA))
-# Export table
-saveRDS(diversity3, file = "./output/intermediate_files/02_Statistical_Analysis_Site_metrics.rds")
-
-# Import table
-diversity3 <- readRDS("./output/intermediate_files/02_Statistical_Analysis_Site_metrics.rds")
 
 # ----6.  Check non- infinite values -----------------------------------------------
 
@@ -81,6 +84,12 @@ diversity3 <- readRDS("./output/intermediate_files/02_Statistical_Analysis_Site_
 check <- diversity3[which(is.nan(diversity3$RescaledAbundance)), ]
 # I am going to exclude those values from further analyzes
 diversity4 <- diversity3[-which(is.nan(diversity3$RescaledAbundance)),]
+
+# Export table
+saveRDS(diversity4, file = "./output/cleaned_data/02_Statistical_Analysis_Site_metrics.rds")
+
+# Import table
+diversity4 <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Site_metrics.rds")
 
 ############################## MODEL TESTING #################################
 
@@ -288,13 +297,12 @@ second_model_data <- diversity4 %>%
                                                                              "Intermediate secondary vegetation" = "ISV", 
                                                                              "Mature secondary vegetation" = "MSV")),
     
-    # set reference level
     Predominant_land_use = factor(Predominant_land_use),
     Predominant_land_use = relevel(Predominant_land_use, ref = "Primary"),
   )
 
 
-# Drop sites that don't have abundance measures
+# Drop sites that don't have abundance measures or land-use data
 second_model_data1 <- drop_na(second_model_data, 
                              Total_abundance, Predominant_land_use) %>% droplevels()
 
@@ -309,7 +317,7 @@ LandUse_divide <- c("Primary", "ISV", "Plantation forest")
 
 # Merge all categories that don't have enough sites on their own 
 second_model_data2 <- second_model_data1 %>%
-  # make a level of Primary minimal
+  
   mutate(
     
     # Drop the Cannot decide intensity levels for the land-use categories that have 
@@ -322,7 +330,7 @@ second_model_data2 <- second_model_data1 %>%
     Use_intensity = ifelse((Predominant_land_use == "Plantation forest" | Predominant_land_use == "ISV") & (Use_intensity == "Intense use" | Use_intensity == "Light use"),
       str_replace_all(Use_intensity, pattern = c("Intense use" = "Light-intense use", "Light use" = "Light-intense use")), paste(Use_intensity)),
     
-    # Merge all the intensity levels for those land-use categories that don't have enough sites in each land-use
+    # Merge all the intensity levels for those land-use categories that don't have enough sites in each land-use type/intensity combination
     Use_intensity = ifelse(Predominant_land_use %nin% LandUse_divide,
                            str_replace_all(Use_intensity, pattern = c("Intense use" = "All", "Light use" = "All", "Minimal use" = "All", "Cannot decide" = "All")), 
                            paste(Use_intensity)),
@@ -358,6 +366,13 @@ second_model_data2 <- drop_na(second_model_data2,
 
 # Check number of sites
 table(second_model_data2$LandUse, second_model_data2$Kingdom)
+
+# Check number of studies
+SS_second_model2 <- second_model_data2 %>% group_by(Kingdom, LandUse) %>% 
+  summarise(Number_studies = length(unique(SS))) %>%  
+  ungroup() 
+
+sum(SS_second_model2$Number_studies)
 
 # ---8.3. Choose between GLMM or LMM -----------------------------------------------------------------
 
@@ -412,6 +427,9 @@ m2_8 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
 # compare the models that converged using Akaike's Information Criterion (AIC)
 AIC(m2_1, m2_2)
 
+# anova-like table of random effects via likelihood ratio tests
+ranova(m2_2)
+
 # ---8.5. Choose fixed effects structure  -----------------------------------------------------------------
 
 # See the significance of the terms in the model.
@@ -423,54 +441,56 @@ Anova(m2_2)
 # ---8.6. Model estimates  -----------------------------------------------------------------
 summary(m2_2)
 
+
+# Export summary
+require(broom)
+out <- tidy(m2_2)
 # ---8.7. Plot residuals: ----------------------------------------------------------------
 
 simulationOutput2 <- simulateResiduals(fittedModel = m2_2)
 # Acces the qq plot
 plotQQunif(simulationOutput2)
 # Plot the residuals against the predicted value 
-plotResiduals(simulationOutput1)
+plotResiduals(simulationOutput2)
 
 # ---8.8. Plot results: ----------------------------------------------------------------
 
+# Read r code from a file which contains the function to make the plot
 source("./R/PlotErrBar_interactions.R")
+source("./R/PlotErrBar_interactions_modified.R")
 
-PlotErrBar_interactions(model = m2_2, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
-                        ylims = c(-0.3,0.3))
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = m2_2, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
+                        ylims = c(-0.4,0.4), pointtype = c(16,17),blackwhite = FALSE)
 
-inter <- c("LandUse", "Kingdom")
-PlotErrBarInter(model = m2_2,
-                        data = second_model_data2, 
-                        responseVar = "Abundance", 
-                        seMultiplier = 1.96,
-                        catInteraction = inter)
+# Plot the x label
+text(x = c(0.8:10.8), y = -0.38, labels = c("Primary minimal use", 
+                                      "Cropland all uses", 
+                                      "ISV light-intense use",
+                                      "ISV minimal use",
+                                      "MSV all uses",
+                                      "Pasture all uses",
+                                      "Plantation forest light-intense use",
+                                      "Plantation forest minimal use", 
+                                      "Primary intense use",
+                                      "Primary light use",
+                                      "YSV all uses"), srt = 15, cex= 0.9)
 
+# ---8.9. Run the models with log: ----------------------------------------------------------------
 
-roquefort::PlotErrBar(model = m2_2,
-                      data = second_model_data2,
-                      responseVar = "sqrt(Rescaled Abundance)",
-                      seMultiplier = 1.96,
-                      secdAge = FALSE,
-                      logLink = "n",
-                      catEffects = c("LandUse"),
-                      forPaper = TRUE,
-                      plotLabels = FALSE,
-                      plotLandUses = FALSE,
-                      xtext.srt = 25, 
-                      ylim = c(-65, 60))
+m2l_1 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB), data = second_model_data2)
 
-text(x = c(1:14), y = -63, labels = c("Primary minimal", 
-                                      "Primary light-intense", 
-                                      "MSV minimal",
-                                      "MSV light-intense",
-                                      "ISV minimal",
-                                      "ISV light-intense",
-                                      "YSV minimal",
-                                      "YSV light-intense", 
-                                      "Plantation forest minimal",
-                                      "Plantation forest light-intense",
-                                      "Pasture light-intense",
-                                      "Cropland minimal",
-                                      "Cropland light-intense"), srt = 20, cex= 0.7)
+m2l_2 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
 
+AIC(m2l_1, m2l_2)
+
+simulationOutput2l <- simulateResiduals(fittedModel = m2l_2)
+# Acces the qq plot
+plotQQunif(simulationOutput2l)
+# Plot the residuals against the predicted value 
+plotResiduals(simulationOutput2l)
+
+# The residual plots look better with sqrt.
 
