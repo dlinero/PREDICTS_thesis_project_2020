@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 knitr::opts_chunk$set(cache = TRUE)
 knitr::opts_chunk$set(error = TRUE)
+library(knitr)
+library(kableExtra)
 ```
 
 ```{r load libraries, include=FALSE, warning=FALSE}
@@ -23,152 +25,195 @@ library(car) # for getting anova tables with significance values
 library(DHARMa) # for model criticism plots
 library(MuMIn) # for checking explanatory power of mixed effects models
 library(stringr)
+library(kableExtra)
 ```
 
 **1. Load the diversity metrics that have been calculated from a table that:**
 
 * Had corrected abundance measures using sampling effort
-* Had meged sites
+* Had merged sites
+* Does not have NaN
 
 
 ```{r load table}
-diversity3 <- readRDS("./output/intermediate_files/02_Analysis_walkthrough_Site_metrics.rds")
+diversity4 <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Site_metrics.rds")
 ```
 
-**2. I am going to merge the land-use classes "Primary forest" and "Primary non-forest". I'm also going to merge the use intensities "Intense" and "light". Finally, I will set the land-use or use intensity  as NA if they are:**
+**2. I will fisrt explore the number of sites that have a known land use category**
 
-* Secondary vegetation (indeterminate age)
-* Cannot decide 
-* Urban 
 
 ```{r merge and drop}
-diversity4 <- diversity3 %>%
-  
+second_model_data <- diversity4 %>%
+  # make a level of Primary minimal
   mutate(
     
-    # collapse primary forest and non-forest together into primary vegetation as
-    # these aren't well distinguished
+    # collapse primary forest and non-forest together into primary vegetation 
+    # as these aren't well distinguished
     Predominant_land_use = recode_factor(Predominant_land_use, 
                                          "Primary forest" = "Primary", 
                                          "Primary non-forest" = "Primary"),
     
-    # indeterminate secondary veg and cannot decide get NA, urban too because it 
-    # has only 40 sites
+    # indeterminate secondary veg and cannot decide are transformed into NA.
+    # Urban too because it has only 40 sites. 
     Predominant_land_use = na_if(Predominant_land_use, "Secondary vegetation (indeterminate age)"),
     Predominant_land_use = na_if(Predominant_land_use, "Cannot decide"),
     Predominant_land_use = na_if(Predominant_land_use, "Urban"),
-
+   
     
-    # set reference levels
+     # Give a shorter name to some land use categories 
+    Predominant_land_use = str_replace_all(Predominant_land_use,
+                                           pattern = c("Young_secondary vegetation" =
+                                                         "YSV",
+                                                       "Intermediate secondary vegetation" =
+                                                         "YSV", 
+                                                       "Mature secondary vegetation" = "MSV")),
+    
     Predominant_land_use = factor(Predominant_land_use),
     Predominant_land_use = relevel(Predominant_land_use, ref = "Primary"),
-    Use_intensity = factor(Use_intensity),
-    Use_intensity = relevel(Use_intensity, ref = "Minimal use")
   )
+
+
+# Drop sites that don't have abundance measures or land-use data
+second_model_data1 <- drop_na(second_model_data, 
+                             Total_abundance, Predominant_land_use) %>% droplevels()
+
+
+# Check the number of sites for animals and plants
+addmargins(table(second_model_data1$Predominant_land_use,
+                 second_model_data1$Use_intensity, second_model_data1$Kingdom), 2)
+
+
 ```
 
 
+**3. Merge use intensities for those land use categories that don't have enough sites to separate them into different intensities**
 
-```{r diversity5}
-diversity5 <- diversity4 %>%  
-  mutate(Use_intensity = str_replace_all(Use_intensity,
-                                         pattern = c("Intense use" = "Intense light use",
-                                                     "Light use" = "Intense light use")), 
-         Use_intensity = na_if(Use_intensity, "Cannot decide"),
-         Use_intensity = factor(Use_intensity),
-         Use_intensity = relevel(Use_intensity, ref = "Minimal use")) 
+* I will separate Primary into minimal, light and intense uses
+* I will separate ISv into minimal and light-intense uses
+* I will separate Plantation forest into minimal and light-intense uses
+* Everything else I will merge all intensities
+
+
+```{r merge some intensities}
+LandUse_divide <- c("Primary", "ISV", "Plantation forest")
+
+second_model_data2 <- second_model_data1 %>%
+  
+  mutate(
+    
+    # Drop the Cannot decide intensity levels for the land-use categories that have 
+    # enough sites for the minimal, and light/intense
+    Use_intensity = ifelse(Predominant_land_use %in% LandUse_divide & 
+                             Use_intensity == "Cannot decide",
+                           NA,
+                           paste(Use_intensity)), 
+    
+    # Join the intensity levels of light and intense for Plantation forest and ISV 
+    Use_intensity = ifelse((Predominant_land_use == "Plantation forest" |
+                              Predominant_land_use == "ISV") & 
+                             (Use_intensity == "Intense use" | 
+                                Use_intensity == "Light use"),
+      str_replace_all(Use_intensity, pattern = c("Intense use" = "Light-intense use",
+                                                 "Light use" = "Light-intense use")),
+      paste(Use_intensity)),
+    
+    # Merge all the intensity levels for those land-use categories that don't have 
+    # enough sites in each land-use type/intensity combination
+    Use_intensity = ifelse(Predominant_land_use %nin% LandUse_divide,
+                           str_replace_all(Use_intensity, pattern = c("Intense use" =
+                                                                        "All", "Light
+                                                                      use" = "All",
+                                                                      "Minimal use" 
+                                                                      = "All", "Cannot
+                                                                      decide" =
+                                                                        "All")), 
+                      
+                           paste(Use_intensity)),
+    
+
+    # Paste the land-use classes and intensity levels
+    LandUse = ifelse(Predominant_land_use != "NA" & Use_intensity != "NA",
+                     paste(Predominant_land_use, Use_intensity),
+                     NA),
+    
+    # set reference level
+    LandUse = factor(LandUse),
+    LandUse = relevel(LandUse, ref = "Primary Minimal use")
+  )
 
 ```
 
+**4. Test for collinearity**
 
-**3. Test for collinearity**
+Since I'm going to explore the collinearity between categorical variables, I'm going to use the Generalized variance Inflation Factors function provided by Zuur et al., (2009)
+
 
 ```{r collinearity}
 source("https://highstat.com/Books/Book2/HighstatLibV10.R")
 
-corvif(diversity5[ , c("Predominant_land_use", "Use_intensity")])
+corvif(second_model_data2[ , c("LandUse", "Kingdom")])
 ```
 
-**4. Get complete cases, that means dropping the rows that have NA in the columns of total abundance, predominant land use and use intensity**
+**4. Get complete cases, that means dropping the rows that have NA in the columns of total abundance and LandUse**
 
 ```{r complete cases model data}
+# Create a table with complete cases
+second_model_data2 <- drop_na(second_model_data2, 
+                              Total_abundance, LandUse) %>% droplevels()
 
-model_data <- drop_na(diversity5, 
-                      Total_abundance, Predominant_land_use, Use_intensity) %>% 
-  droplevels()
+# Check number of sites
+table(second_model_data2$LandUse, second_model_data2$Kingdom)
 ```
 
-
-
-```{r }
-table(model_data$Predominant_land_use, model_data$Use_intensity)
-```
 
 **5. Transform abundance measures**
 
 Abundance data usually display a nonnormal error distribution because they have a positive mean-variance relationship and are zero-inflated (Purvis et al., 2018).  Given that some abudance measures are not integers (some are relative abudance or densities), I am not going to model the abudance with a Poisson distribution, but I'm going to transform it in order to meet the assumptions of linear mixed models. 
 
 ```{r transform abundance}
-model_data1 <- model_data %>% mutate(logAbundance = log(RescaledAbundance + 1),
-                     sqrtAbundance = sqrt(RescaledAbundance)
+second_model_data2 <- mutate(second_model_data2, 
+                            logAbundance = log(RescaledAbundance + 1),
+                            sqrtAbundance = sqrt(RescaledAbundance)
 )
 ```
 
-**6. Data explorations**
+**6. Select random effects structure **
 
-```{r plots}
-# Distribution of the log rescaled total abundance
-hist(model_data1$logAbundance)
-```
+To select the random-effects structure, we use the method recommended by (Zuur et al., 2009)  of taking the most complex fixed-effects structure, including all interactions, that will be tested in the second stage of modelling, and use it to compare different random-effects structures.
 
-
-```{r plotss}
-# Distribution of the square root of the rescaled total abundance
-hist(model_data1$sqrtAbundance)
-```
-
-
-```{r plotsss}
-# Boxplot showing rescaled total abundance differences between land-use types and intensities
-ggplot(model_data1, aes(x=Predominant_land_use, y= RescaledAbundance, color= Use_intensity)) + 
-  geom_boxplot() + theme(axis.text.x = element_text(size=9, angle=45))
-```
-
-Since the distribution looks a little bit more normal using square root, I am going to start with that as response variable
-
-**7. Select random effects structure **
 
 ```{r model1}
-First_model <- lmer(sqrtAbundance ~ Predominant_land_use + Use_intensity +
-             Predominant_land_use:Use_intensity + 
-             (1|SS) + (1|SSB), data = model_data1)
-
+m2_1 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+             (1|SS) + (1|SSB), data = second_model_data2)
 ```
 
 ```{r model2}
-Second_model <- lmer(sqrtAbundance ~ Predominant_land_use + Use_intensity +
-             Predominant_land_use:Use_intensity + 
-             (1+Predominant_land_use|SS) + (1|SSB), data = model_data1)
+m2_2 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+             (1|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
 ```
 
 ```{r model3}
-Third_model <- lmer(sqrtAbundance ~ Predominant_land_use + Use_intensity + 
-             Predominant_land_use:Use_intensity + 
-             (1+Use_intensity|SS) + (1|SSB), data = model_data1)
-
+m2_3 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+             (1+LandUse|SS) + (1|SSB), data = second_model_data2)
 ```
 
-Compare the model using the Akaike's Information Criterion 
-```{r}
-AIC(First_model, Second_model, Third_model)
+
+```{r model 5}
+m2_5 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+             (1+Predominant_land_use|SS) + (1|SSB), data = second_model_data2)
 ```
 
-I am going to select the last model as it didn't have a warning and has a lower AIC than the first one. 
+
+Compare the models that converge using the Akaike's Information Criterion 
+```{r Akaike 1}
+AIC(m2_1, m2_2)
+```
+
 
 **8. Select fixed effects structure**
 
 ```{r fixed effects}
-Anova(Third_model)
+Anova(m2_2)
 ```
 
 Since the interaction is significant, I am going to leave the two explanatory variables.
@@ -176,109 +221,243 @@ Since the interaction is significant, I am going to leave the two explanatory va
 **9. Plot residuals of the model**
 
 ```{r residuals 1}
-plot(Third_model)
-```
-
-```{r residuals 2}
-simulationOutput <- simulateResiduals(fittedModel = Third_model)
+simulationOutput2 <- simulateResiduals(fittedModel = m2_2)
 # Acces the qq plot
-plotQQunif(simulationOutput)
+plotQQunif(simulationOutput2)
 # Plot the residuals against the predicted value 
-plotResiduals(simulationOutput)
-
+plotResiduals(simulationOutput2)
 ```
+
 
 **10. Model estimates**
 
 ```{r summary1}
 
-summary(Third_model)
+summary(m2_2)
 
 ```
 
-According to the model estimates:
+Table with confidence intervals
 
-* The average square root of the rescaled abundance in Primary forest with minimal use is 0.536
-* The average square root of the rescaled abundance in minimally-used Pasture is 0.14 higher. Meaning that the abundance in minimally-used Pasture is 0.54+0.14=0.68
-* The average square root of the rescaled abundance in Intermediate secondary vegetation with an intense-light use is 0.09 lower. Meaning that the abundance in Intermediate secondary vegetation with an intense-light use is 0.54-0.09 = 0.45
-* The average square root of the rescaled abundance in Plantation forest with an intense-light use is 0.13 lower. Meaning that the abundance in Plantation forest with an intense-light use is 0.54-0.13 = 0.41
-* The average square root of the rescaled abundance in Crops with an intense-light use is 0.27 lower. Meaning that the abundance in Crops with an intense-light use is 0.54-0.13 = 0.27
+```{r CI model 2}
+CI_m2_2 <- read.csv("./output/summary_m2_2.csv", header = TRUE, sep = ";")
+kable(CI_m2_2, format="latex", booktabs=TRUE) %>% 
+  kable_styling(latex_options="scale_down")
+```
+
 
 **11. Plot the results**
 
 ```{r plot results 1}
-roquefort::PlotErrBar(model = Third_model,
-                      data = model_data5,
-                      responseVar = "sqrt(Rescaled Abundance)",
-                      seMultiplier = 1.96,
-                      secdAge = TRUE,
-                      logLink = "n",
-                      catEffects = c("Predominant_land_use"),
-                      forPaper = TRUE,
-                      plotLabels = FALSE)
+
+#Read r code from a file which contains the function to make the plot
+source("./R/PlotErrBar_interactions.R")
+source("./R/PlotErrBar_interactions_modified.R")
+
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = m2_2, resp = "Abundance", Effect1 = "LandUse",
+                             Effect2 = "Kingdom",
+                        ylims = c(-0.4,0.4), pointtype = c(16,17),blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), y = -0.38, labels = c("Primary minimal use", 
+                                      "Cropland all uses", 
+                                      "ISV light-intense use",
+                                      "ISV minimal use",
+                                      "MSV all uses",
+                                      "Pasture all uses",
+                                      "Plantation forest light-intense use",
+                                      "Plantation forest minimal use", 
+                                      "Primary intense use",
+                                      "Primary light use",
+                                      "YSV all uses"), srt = 18, cex= 0.7)
 
 ```
 
 
 **12. Run the models with the log of Abundance**
 
-```{r}
-First_model2 <- lmer(logAbundance ~ Predominant_land_use + Use_intensity +
-             Predominant_land_use:Use_intensity + 
-             (1|SS) + (1|SSB), data = model_data1)
+```{r log first}
+m2l_2 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
 ```
 
-```{r}
-Second_model2 <- lmer(logAbundance ~ Predominant_land_use + Use_intensity +
-             Predominant_land_use:Use_intensity + 
-             (1+Predominant_land_use|SS) + (1|SSB), data = model_data1)
-```
-
-```{r}
-Third_model2 <- lmer(logAbundance ~ Predominant_land_use + Use_intensity + 
-             Predominant_land_use:Use_intensity + 
-             (1+Use_intensity|SS) + (1|SSB), data = model_data1)
-```
-
-```{r}
-# Choose best random effects structure
-AIC(First_model2, Second_model2, Third_model2)
-```
-
-```{r}
-# See the significance of fixed variables
-Anova(Third_model2)
-```
 
 ```{r plot residuals 2}
-plot(Third_model2)
-
-# Simulate the residuals and plot them
-simulationOutput1 <- simulateResiduals(fittedModel = Third_model2, plot = T)
-
+simulationOutput2l <- simulateResiduals(fittedModel = m2l_2)
 # Acces the qq plot
-plotQQunif(simulationOutput1)
-
+plotQQunif(simulationOutput2l)
 # Plot the residuals against the predicted value 
-plotResiduals(simulationOutput1)
+plotResiduals(simulationOutput2l)
 
 ```
 
-```{r}
-# model estimates
-summary(Third_model2)
+**13. Merge all land-use intensities**
+
+```{r merge all land uses}
+
+Third_model_data <- diversity4 %>%
+  # make a level of Primary minimal
+  mutate(
+    
+    # collapse primary forest and non-forest together into primary vegetation
+    # as these aren't well distinguished
+    Predominant_land_use = recode_factor(Predominant_land_use, 
+                                         "Primary forest" = "Primary", 
+                                         "Primary non-forest" = "Primary"),
+    
+    # indeterminate secondary veg and cannot decide are transformed into NA.
+    # Urban too because it has only 40 sites. 
+    Predominant_land_use = na_if(Predominant_land_use, "Secondary vegetation (indeterminate age)"),
+    Predominant_land_use = na_if(Predominant_land_use, "Cannot decide"),
+    Predominant_land_use = na_if(Predominant_land_use, "Urban"),
+    
+    
+    # Give a shorter name to some land use categories 
+    Predominant_land_use = str_replace_all(Predominant_land_use, pattern = 
+                                             c("Young secondary vegetation" = "YSV",
+                                               
+                                                                             "Intermediate secondary vegetation" = "ISV", 
+                                               
+                                                                             "Mature secondary vegetation" = "MSV")),
+    
+   
+     # Merge all the intensity levels for all land-use categories 
+    Use_intensity = ifelse(Use_intensity != "NA", "All", "NA"),
+    
+    # Paste the land-use classes and intensity levels
+    LandUse = ifelse(Predominant_land_use != "NA" & Use_intensity != "NA",
+                     paste(Predominant_land_use, Use_intensity),
+                     NA),
+    
+    # set reference level
+    LandUse = factor(LandUse),
+    LandUse = relevel(LandUse, ref = "Primary All")
+  )
+
 ```
 
-```{r plot results 2}
-roquefort::PlotErrBar(model = Third_model2,
-                      data = model_data5,
-                      responseVar = "log Abundance",
-                      seMultiplier = 1.96,
-                      secdAge = TRUE,
-                      logLink = "n",
-                      catEffects = c("Predominant_land_use", "Use_intensity"),
-                      forPaper = TRUE,
-                      plotLabels = FALSE)
+**14. Test for collinearity**
+
+```{r collinearity all merged intensities}
+
+# Calculate the VIF
+corvif(Third_model_data[ , c("LandUse", "Kingdom")])
+```
+
+**15. Complete cases**
+
+```{r complete third model}
+# Create a table with complete cases
+Third_model_data2 <- drop_na(Third_model_data, 
+                              Total_abundance, LandUse) %>% droplevels()
+
+# Check number of sites
+table(Third_model_data2$LandUse, Third_model_data2$Kingdom)
+
+```
+
+**16. Transform abundance measures**
+
+```{r abundance third}
+
+# Transform RescaledAbundance.
+Third_model_data2 <- mutate(Third_model_data2, 
+                             logAbundance = log(RescaledAbundance + 1),
+                             sqrtAbundance = sqrt(RescaledAbundance)
+)
+
+```
+
+**17. Select random effects structure **
+
+```{r models random third 1}
+m3_1 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB), data = Third_model_data2)
+```
+
+
+```{r models random third 2}
+m3_2 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB) + (1|Source_ID), data = Third_model_data2)
+```
+
+```{r models random third 3}
+m3_3 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1+LandUse|SS) + (1|SSB), data = Third_model_data2)
+```
+
+```{r models random third 4}
+m3_5 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1+Predominant_land_use|SS) + (1|SSB), data = Third_model_data2)
+```
+
+```{r AIC third}
+# Compare the models that converged
+AIC(m3_1, m3_2)
+```
+
+**18. Choose fixed effects structure**
+
+```{r fixed third}
+
+# See the significance of the terms in the model.
+Anova(m3_2)
+
+# The Land_use:kingdom interaction is significant, so I won’t remove this term 
+# from the model. 
+
+# compare the models that converged using all use intensities merged, and the models that converged
+# separating the use-intensities for some land uses
+AIC(m2_1, m2_2, m3_1, m3_2)
+anova(m3_2, m2_1)
+```
+
+**19. Plot residuals**
+
+```{r residuals third}
+simulationOutput3 <- simulateResiduals(fittedModel = m3_2)
+# Acces the qq plot
+plotQQunif(simulationOutput3)
+# Plot the residuals against the predicted value 
+plotResiduals(simulationOutput3)
+```
+
+
+**20. Model estimates**
+
+```{r estimates third}
+summary(m3_2)
+```
+
+
+Table with confidence intervals
+
+```{r CI model 3}
+CI_m3_2 <- read.csv("./output/summary_m3_2.csv", header = TRUE, sep = ";")
+kable(CI_m3_2, format="latex", booktabs=TRUE) %>% 
+  kable_styling(latex_options="scale_down")
+
+```
+
+
+
+**21. Plot results**
+
+```{r results third plot}
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = m3_2, resp = "Abundance", Effect1 = "LandUse",
+                             Effect2 = "Kingdom",
+                             ylims = c(-0.4,0.4), pointtype = c(16,17),blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8, 1.8, 2.8, 3.8, 4.7, 5.7, 6.8), y = -0.38, labels = c("Primary", 
+                                            "Cropland", 
+                                            "ISV",                                          
+                                            "MSV",
+                                            "Pasture",
+                                            "Plantation forest",
+                                            "YSV all"), srt = 15, cex= 0.9)
 
 ```
 

@@ -285,8 +285,7 @@ second_model_data <- diversity4 %>%
                                          "Primary forest" = "Primary", 
                                          "Primary non-forest" = "Primary"),
     
-    # indeterminate secondary veg and cannot decide are transformed into NA, urban too because it has only 40 sites. The use
-    # intensity cannot decide will also equal to NA
+    # indeterminate secondary veg and cannot decide are transformed into NA, urban too because it has only 40 sites. 
     Predominant_land_use = na_if(Predominant_land_use, "Secondary vegetation (indeterminate age)"),
     Predominant_land_use = na_if(Predominant_land_use, "Cannot decide"),
     Predominant_land_use = na_if(Predominant_land_use, "Urban"),
@@ -367,11 +366,12 @@ second_model_data2 <- drop_na(second_model_data2,
 # Check number of sites
 table(second_model_data2$LandUse, second_model_data2$Kingdom)
 
-# Check number of studies
+# Check number of studies /// I think this code is not working properly
 SS_second_model2 <- second_model_data2 %>% group_by(Kingdom, LandUse) %>% 
   summarise(Number_studies = length(unique(SS))) %>%  
   ungroup() 
 
+# Total number of studies
 sum(SS_second_model2$Number_studies)
 
 # ---8.3. Choose between GLMM or LMM -----------------------------------------------------------------
@@ -416,19 +416,13 @@ m2_5 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
 m2_6 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
              (1+Predominant_land_use|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
 
-m2_7 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-             (1+Use_intensity|SS) + (1|SSB), data = second_model_data2)
-# IsSingular
-
-m2_8 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-             (1+Use_intensity|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
-
 
 # compare the models that converged using Akaike's Information Criterion (AIC)
 AIC(m2_1, m2_2)
 
 # anova-like table of random effects via likelihood ratio tests
 ranova(m2_2)
+ranova(m2_3)
 
 # ---8.5. Choose fixed effects structure  -----------------------------------------------------------------
 
@@ -445,6 +439,7 @@ summary(m2_2)
 # Export summary
 require(broom)
 out <- tidy(m2_2)
+
 # ---8.7. Plot residuals: ----------------------------------------------------------------
 
 simulationOutput2 <- simulateResiduals(fittedModel = m2_2)
@@ -493,4 +488,187 @@ plotQQunif(simulationOutput2l)
 plotResiduals(simulationOutput2l)
 
 # The residual plots look better with sqrt.
+
+# 9. --- Model with kingdom interaction simplification ---------------------------------------------------------------------------
+
+Third_model_data <- diversity4 %>%
+  # make a level of Primary minimal
+  mutate(
+    
+    # collapse primary forest and non-forest together into primary vegetation as these aren't well distinguished
+    Predominant_land_use = recode_factor(Predominant_land_use, 
+                                         "Primary forest" = "Primary", 
+                                         "Primary non-forest" = "Primary"),
+    
+    # indeterminate secondary veg and cannot decide are transformed into NA, urban too because it has only 40 sites. 
+    Predominant_land_use = na_if(Predominant_land_use, "Secondary vegetation (indeterminate age)"),
+    Predominant_land_use = na_if(Predominant_land_use, "Cannot decide"),
+    Predominant_land_use = na_if(Predominant_land_use, "Urban"),
+    
+    
+    # Give a shorter name to some land use categories 
+    Predominant_land_use = str_replace_all(Predominant_land_use, pattern = c("Young secondary vegetation" = "YSV",
+                                                                             "Intermediate secondary vegetation" = "ISV", 
+                                                                             "Mature secondary vegetation" = "MSV")),
+    
+   
+     # Merge all the intensity levels for all land-use categories 
+    Use_intensity = ifelse(Use_intensity != "NA", "All", "NA"),
+    
+    # Paste the land-use classes and intensity levels
+    LandUse = ifelse(Predominant_land_use != "NA" & Use_intensity != "NA",
+                     paste(Predominant_land_use, Use_intensity),
+                     NA),
+    
+    # set reference level
+    LandUse = factor(LandUse),
+    LandUse = relevel(LandUse, ref = "Primary All")
+  )
+
+
+# ---9.1. Test for collinearity  ----------------------------------------------------------------------
+
+# Since I'm going to explore the collinearity between categorical variables, I'm going to use 
+# the Generalized variance Inflation Factors function provided by Zuur et al., (2009)
+
+# Get the function
+source("https://highstat.com/Books/Book2/HighstatLibV10.R")
+
+# Calculate the VIF
+corvif(Third_model_data[ , c("LandUse", "Kingdom")])
+
+# ---9.2. Complete cases --------------------------------------------------------------------------------
+
+# Create a table with complete cases
+Third_model_data2 <- drop_na(Third_model_data, 
+                              Total_abundance, LandUse) %>% droplevels()
+
+# Check number of sites
+table(Third_model_data2$LandUse, Third_model_data2$Kingdom)
+
+# Check number of studies /// I think this code is not working properly 
+SS_third_model<- Third_model_data2 %>% group_by(Kingdom, LandUse) %>% 
+  summarise(Number_studies = length(unique(SS))) %>%  
+  ungroup() 
+
+# Total number of studies
+sum(SS_third_model$Number_studies)
+
+# ---9.3. Choose between GLMM or LMM -----------------------------------------------------------------
+
+# Distribution of the original variable
+hist(Third_model_data2$RescaledAbundance) 
+
+# Transform RescaledAbundance.
+Third_model_data2 <- mutate(Third_model_data2, 
+                             logAbundance = log(RescaledAbundance + 1),
+                             sqrtAbundance = sqrt(RescaledAbundance)
+)
+
+# Plot histograms of the rescaled abundance
+ggplot(Third_model_data2, aes(x=LandUse, y= RescaledAbundance, color= Kingdom)) + 
+  geom_boxplot() + theme(axis.text.x = element_text(angle = 20))
+
+# ---9.4. Choose random effects structure  -----------------------------------------------------------------
+
+# To select the random-effects structure, we use the method recommended by (Zuur et al., 2009) 
+# of taking the most complex fixed-effects structure, including all interactions, that will be 
+# tested in the second stage of modelling, and use it to compare different random-effects 
+# structures.
+
+m3_1 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB), data = Third_model_data2)
+
+m3_2 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB) + (1|Source_ID), data = Third_model_data2)
+
+m3_3 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1+LandUse|SS) + (1|SSB), data = Third_model_data2)
+# IsSingular
+
+m3_4 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1+LandUse|SS) + (1|SSB) + (1|Source_ID), data = Third_model_data2)
+# IsSingular
+
+m3_5 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1+Predominant_land_use|SS) + (1|SSB), data = Third_model_data2)
+# IsSingular
+
+m3_6 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1+Predominant_land_use|SS) + (1|SSB) + (1|Source_ID), data = Third_model_data2)
+# IsSingular
+
+# Compare the models that converged
+AIC(m3_1, m3_2)
+
+# anova-like table of random effects via likelihood ratio tests
+ranova(m3_2)
+
+# ---9.5. Choose fixed effects structure  -----------------------------------------------------------------
+
+# See the significance of the terms in the model.
+Anova(m3_2)
+
+# The Land_use:kingdom interaction is significant, so I won’t remove this term 
+# from the model. 
+
+# compare the models that converged using all use intensities merged, and the models that converged
+# separating the use-intensities for some land uses
+AIC(m2_1, m2_2, m3_1, m3_2)
+anova(m3_2, m2_1)
+
+# ---9.6. Model estimates  -----------------------------------------------------------------
+summary(m3_2)
+
+
+# Export summary
+require(broom)
+out <- tidy(m3_2)
+
+# ---9.7. Plot residuals: ----------------------------------------------------------------
+
+simulationOutput3 <- simulateResiduals(fittedModel = m3_2)
+# Acces the qq plot
+plotQQunif(simulationOutput3)
+# Plot the residuals against the predicted value 
+plotResiduals(simulationOutput3)
+
+# ---9.8. Plot results: ----------------------------------------------------------------
+
+# Read r code from a file which contains the function to make the plot
+source("./R/PlotErrBar_interactions.R")
+source("./R/PlotErrBar_interactions_modified.R")
+
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = m3_2, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
+                             ylims = c(-0.4,0.4), pointtype = c(16,17),blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8, 1.8, 2.8, 3.8, 4.7, 5.7, 6.8), y = -0.38, labels = c("Primary", 
+                                            "Cropland", 
+                                            "ISV",                                          
+                                            "MSV",
+                                            "Pasture",
+                                            "Plantation forest",
+                                            "YSV all"), srt = 15, cex= 0.9)
+
+# --9.9. Run the models with log: ----------------------------------------------------------------
+
+m3l_1 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+                (1|SS) + (1|SSB), data = Third_model_data2)
+
+m3l_2 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+                (1|SS) + (1|SSB) + (1|Source_ID), data = Third_model_data2)
+
+AIC(m3l_1, m3l_2)
+
+simulationOutput3l <- simulateResiduals(fittedModel = m3l_2)
+# Acces the qq plot
+plotQQunif(simulationOutput3l)
+# Plot the residuals against the predicted value 
+plotResiduals(simulationOutput3l)
+
+# The residual plots look better with sqrt.
+
+
 
