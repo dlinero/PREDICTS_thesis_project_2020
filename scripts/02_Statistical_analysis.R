@@ -639,6 +639,12 @@ plotResiduals(simulationOutput3)
 source("./R/PlotErrBar_interactions.R")
 source("./R/PlotErrBar_interactions_modified.R")
 
+par(mar = c(10, 2, 2, 2))
+PlotErrBar_interactions(model = m3_2, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
+                             ylims = c(-0.4,0.4), pointtype = c(16,17),blackwhite = FALSE)
+
+
+
 # Plot the differences between estimates 
 PlotErrBar_interactions_modi(model = m3_2, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
                              ylims = c(-0.4,0.4), pointtype = c(16,17),blackwhite = FALSE)
@@ -670,5 +676,75 @@ plotResiduals(simulationOutput3l)
 
 # The residual plots look better with sqrt.
 
+# 10. Choose between mergin all use -intensities for all land-uses or only for those that do not
+# have enough sites for each combination
+
+# I have to make the models with only the rows of data that are the same between both tables. 
+
+# make a copy of the database: 
+WH_merged <- second_model_data2
+
+# Model with separated land-use intensities
+m2_2 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB) + (1|Source_ID), data = WH_merged)
+summary(m2_2)
+# Same model but with log 
+m2_2l <- lmer(logAbundance~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB) + (1|Source_ID), data = WH_merged)
 
 
+# Check overdispersion
+simulateResiduals_m2_2 <- simulateResiduals(fittedModel = m2_2) 
+testDispersion(simulateResiduals_m2_2)
+
+# Merge land-use intensities for the second_model_data2
+WH_merged <- WH_merged %>% mutate(
+  
+  # Merge all the intensity levels for all land-use categories 
+  Use_intensity = ifelse(Use_intensity != "NA", "All", "NA"),
+
+  # Paste the land-use classes and intensity levels
+  LandUse = ifelse(Predominant_land_use != "NA" & Use_intensity != "NA",
+                 paste(Predominant_land_use, Use_intensity),
+                 NA),
+
+# set reference level
+LandUse = factor(LandUse),
+LandUse = relevel(LandUse, ref = "Primary All")
+)
+
+# Check number of sites
+table(second_model_data2_merged$LandUse, second_model_data2_merged$Kingdom)
+
+# Model with merged land-uses
+m2_2_m <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB) + (1|Source_ID), data = WH_merged)
+summary(m2_2_m)
+
+# same model but with log
+m2_2_ml <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+                 (1|SS) + (1|SSB) + (1|Source_ID), data = WH_merged)
+
+# Check overdispersion
+simulateResiduals_m2_2_m <- simulateResiduals(fittedModel = m2_2_m) 
+testDispersion(simulateResiduals_m2_2_m)
+
+
+# Test what model is better
+# Akaike Information Criteria
+AIC(m2_2, m2_2_m)
+
+# Next, we will check if we’ve lost a significant amount of explanatory 
+# power by removing this interaction. If we have, we want to keep the more
+# complex model. If we haven’t lost a significant amount of explanatory power,
+# then we can keep this simpler model. The test we’ll use is a likelihood ratio
+# test (LRT).
+
+anova(m2_2_m, m2_2, test = "F")
+
+# The LRT is not significant, so by removing the interaction from the model, we didn't
+# lost a significant amount of explanatory power. This means that we should keep the more 
+# simpler model. 
+
+AIC(m2_2l, m2_2_ml)
+anova(m2_2l, m2_2_ml, test = "F")
