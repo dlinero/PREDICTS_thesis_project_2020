@@ -284,6 +284,9 @@ Dispersal_syndrome <- Plantspecies %>%
 # Export results
 write.csv(Dispersal_syndrome, "output/intermediate_files/01_Filter_data_All_dispersal_syndrome_records.csv")
 
+# Import results
+Dispersal_syndrome <- read.csv("output/intermediate_files/01_Filter_data_All_dispersal_syndrome_records.csv")
+
 # Get the table for fruit type
 Fruit_type <- Plantspecies %>% subset(TraitID == 99) %>% droplevels()
 
@@ -331,8 +334,10 @@ Endoo_PlantSpecies <- Dispersal_syndrome %>%
   # Make a character vector
   droplevels() %>% pull(Updatedname) %>% as.character()
 
-# Use the function Filter_endozoochory_terms to filter the rest of databases (to see the function, open document
-# ./R/01_Filter_data_functions.R)
+# Use the function Filter_endozoochory_terms to filter the rest of databases 
+# Get the function
+source("./R/01_Filter_data_find_endozoochory.R")
+
 
 Endoo_PlantSpecies <- Filter_endozoochory_terms(DatasetName = "The LEDA Traitbase", FilterValue = "endozoochor")
 Endoo_PlantSpecies <- Filter_endozoochory_terms(DatasetName = "BASECO: a floristic and ecological database of Mediterranean French flora",
@@ -522,3 +527,153 @@ addmargins(table(justFirsts_Frugivores_and_plants$Predominant_habitat,justFirsts
 # Export table of first matches
 write.csv(justFirsts_Frugivores_and_plants, "./output/intermediate_files/01_Filter_data_First_matches_Frugivores_and_endoPlants.csv")
 
+
+# Filter not-endozoochorous plants in PREDICTS: ------------------------------------------------------
+
+# Import the TRY dataset that is already filter to include records
+# that have information for the trait, thar are corrected to match the 
+# taxonomy of the Catalogue of life and belong to species, subspecies and 
+# varieties that are present (as species) in the PREDICTS database. This dataset was
+# divided in dispersal syndrome trait and fruit type trait. 
+
+# Import dispersal syndrome data 
+Dispersal_syndrome <- read.csv("output/intermediate_files/01_Filter_data_All_dispersal_syndrome_records.csv")
+
+# See the factors of dispersal syndrome type
+DS_levels <- as.data.frame(levels(Dispersal_syndrome$OrigValueStr))
+
+
+# Select all species that are explicitly classified as non-dispersed by endozoochory, I will remove
+# the ones that might rely on animals too, like ectozoochory, ants and fishes. 
+
+Not_endozoo <- c("a-wind", "Anemo", "anemochory", "Anemochory", "autochor", "Autochory", "ballochor", "boleochor", 
+                 "wind+water", "commerce", "wind", "explosive mechanism", "Explosive", "Floating", "hemerochor", "meteorochor", 
+                 "nautochor", "ombrochor", "speirochor", "Wind", "water", "Water", "agochor", 
+                 "car", "environmental", "rainwash", "unassisted", "Unassisted", 
+                 "unspecialised", "fresh water", "Freshwater", "Diaspore is blown by wind", "propelled", "unassisted/short-distance", 
+                 "wind/long-distance", "Disp")
+
+# Filter the species that have one of these terms in their dispersal syndrome value
+Not_endozoochory <- Dispersal_syndrome %>% 
+  
+  # Filter the records where the dispersal syndrome includes the terms in the vector 
+  filter(str_detect(OrigValueStr, paste(Not_endozoo, collapse = "|"))) %>%
+  
+  # drop levels
+  droplevels()
+
+# Check the levels again
+DS_levels <- as.data.frame(levels(Not_endozoochory$OrigValueStr))
+
+# Create a vector with some unwanted levels
+Filter_out <- as.character(DS_levels[c(2, 3, 4, 11, 17, 18, 23, 24, 33, 36, 38, 42, 44,
+                                       45, 49, 50, 51, 52), 1])
+
+# Filter out the unwanted levels
+Not_endozoochory <- Not_endozoochory %>% 
+  
+  # Remove the records that present an unwanted dispersal syndrome
+  filter(OrigValueStr %nin% Filter_out) %>% 
+  
+  droplevels()
+
+# Check the levels again
+DS_levels <- as.data.frame(levels(Not_endozoochory$OrigValueStr))
+
+# Resulting number of species
+length(unique(Not_endozoochory$Updatedname))
+
+# Since the dataset includes some species where their dispersal syndrome is specified
+# as Disp. I am going to check if these species are in the list of species that we 
+# already know are endozoochorus. 
+
+Not_endozoochorous_sp <- Not_endozoochory %>%
+                    
+                      # Get the list of species where the dispersal syndrome is explicitly
+                      # mentioned
+                      subset(OrigValueStr %nin% "Disp") %>%
+                      
+                      # drop levels
+                      droplevels() %>%
+  
+                      # Get unique species names
+                      distinct(Updatedname) %>% 
+                      
+                      # Create a character vector
+                      pull(Updatedname) %>% as.character()
+  
+                      
+Check_disp_species <- Not_endozoochory %>% 
+  
+                      # Get the list of species that need to be checked 
+                      subset(OrigValueStr == "Disp") %>%
+  
+                      # Eliminate the species that already have information
+                      subset(Updatedname %nin% Not_endozoochorous_sp) %>% 
+
+                      droplevels() %>%
+
+                      # Get unique species names
+                      distinct(Updatedname) %>% 
+  
+                      # Create a character vector
+                     pull(Updatedname) %>% as.character()
+
+# Import list of endozoochorus species
+endo_plants <- read.csv("output/intermediate_files/01_Filter_data_List_endozoochory_species.csv")
+# Transform into a character vector
+endo_plants <- as.character(endo_plants$x)
+
+# Filter out the species that we already know are endozoochorus
+Check_disp_species <- setdiff(Check_disp_species, endo_plants)
+
+# Export list of species that need to be checked manually 
+write.csv(Check_disp_species, "./output/intermediate_files/01_Filter_data_Plant_species_to_revise_not_endoo.csv")
+
+# Load species checked manually
+Revised_not_endo <- read.csv("./output/intermediate_files/01_Filter_data_Plant_species_to_revise_not_endoo_checked.csv")
+
+# Add revised species to the list
+Not_endozoochorous_sp <- c(Not_endozoochorous_sp, as.character(Revised_not_endo$x))
+
+# Import fruit type data 
+Fruit_type <- read.csv("output/intermediate_files/01_Filter_data_All_fruit_type_records.csv")
+
+# See the factors of fruit type
+FT_levels <- as.data.frame(levels(Fruit_type$OrigValueStr))
+
+# Since the dataset does not says if fruits have arils (that might be consumed by
+# animals) I will filter out the plants that have capsules, follicle, legumes, as 
+# these are often dispersed by wind and then manually check them. 
+
+# Create a character vector with the factors of dry fruits
+Dry <- c("capsule", "Dehiscent capsule", "follicle", "Follicle", 
+         "Indehiscent capsule", "legume", "Legume")
+
+# Identify the species that have dry fruits
+Dry_sp <- Fruit_type %>% 
+  
+  # Filter all of the records dry fruits
+  subset(OrigValueStr %in% Dry) %>%
+  
+  # Remove the species that already have information 
+  subset(Updatedname %nin% Not_endozoochorous_sp) %>%
+  
+  # Remove the species that already have information 
+  subset(Updatedname %nin% endo_plants) %>% 
+  
+  # drop levels
+  droplevels() %>%
+  
+  # Get the unique species names
+  distinct(Updatedname)
+
+# Export list of species that need to be checked manually 
+write.csv(Dry_sp, "./output/intermediate_files/01_Filter_data_Plant_species_to_revise_dry_fruits.csv")
+  
+# Load species checked manually
+dry_sp <- read.csv("./output/intermediate_files/01_Filter_data_Plant_species_to_revise_dry_fruits_revised.csv")
+  
+
+TRYdata <- fread("./data/TRY/9297_18042020022105/9297.txt", header = T, sep = "\t", dec = ".", quote = "", data.table = T) 
+appendage <- TRYdata %>% subset(TraitID == 892)
