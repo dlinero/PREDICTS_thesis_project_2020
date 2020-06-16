@@ -691,50 +691,22 @@ PREDICTS_not_endoo_plants <- TropicsDiversity %>%
   
   droplevels()
 
+# Check records that don't have a value in Kingdom or Class
+Noclass_kingdom  <- which(PREDICTS_not_endoo_plants$Kingdom == "")
+List_sp <- as.data.frame(unique(PREDICTS_not_endoo_plants[Noclass_kingdom, "Best_guess_binomial"]))
+
+# This loop searches for the index of species that do not have Kingdom details, and 
+# adds the information in the corresponding rows
+for (i in Noclass_kingdom) {
+  
+  # add  information of kingdom and class 
+  if (PREDICTS_not_endoo_plants[i, "Best_guess_binomial"] %in% List_sp[,1]) { 
+    PREDICTS_not_endoo_plants[i, "Kingdom"] <- "Plantae" 
+  }
+}
+
 # Export PREDICTS filtered table
 saveRDS(PREDICTS_not_endoo_plants, file = "./output/cleaned_data/01_Filter_data_Plants_not_dispersed_by_animals.rds")
 
-# Import
+# Import table
 PREDICTS_not_endoo_plants <- readRDS(file = "./output/cleaned_data/01_Filter_data_Plants_not_dispersed_by_animals.rds")
-
-
-f <- yarg::CorrectSamplingEffort(PREDICTS_not_endoo_plants) 
-
-fa <- yarg::MergeSites(f, silent = TRUE,   merge.extra = "Wilderness_area")
-
-
-fre <- fa %>%
-  
-  # add Diversity_metric_is_valid column
-  mutate(Diversity_metric_is_valid = TRUE) %>%
-  
-  # The extra.cols parameter is used for columns that we want to 
-  # transferred to the final site-level data frame and that the function 
-  # does not add  automatically
-  yarg::SiteMetrics(extra.cols = c("SSB", "SSBS", "Predominant_land_use", "Kingdom")) %>% 
-  
-  # calculate the maximum abundance within each study
-  group_by(SS) %>%
-  mutate(MaxAbundance = ifelse(Diversity_metric_type == "Abundance",
-                               max(Total_abundance),
-                               NA)) %>%
-  ungroup() %>%
-  
-  # now calculate the rescaled abundance (abundance divided by the maximum within each study)
-  mutate(RescaledAbundance = ifelse(Diversity_metric_type == "Abundance",
-                                    Total_abundance/MaxAbundance,
-                                    NA))
-
-# Check the number of sites per land use and use intensity combination
-addmargins(table(data1$Predominant_habitat, data1$Use_intensity), 2)
-
-data1 <- drop_na(fre, 
-                             Total_abundance) %>% droplevels()
-
-# Plot histograms of the rescaled abundance
-ggplot(data1, aes(x=Predominant_habitat, y= RescaledAbundance)) + 
-  geom_boxplot() + theme(axis.text.x = element_text(angle = 20))
-
-
-
-
