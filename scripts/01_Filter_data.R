@@ -710,3 +710,25 @@ saveRDS(PREDICTS_not_endoo_plants, file = "./output/cleaned_data/01_Filter_data_
 
 # Import table
 PREDICTS_not_endoo_plants <- readRDS(file = "./output/cleaned_data/01_Filter_data_Plants_not_dispersed_by_animals.rds")
+
+
+#### -------------Merge both datasets ---------------------------------------
+
+# Import table with animals and endoo plants
+diversityS <- readRDS("./output/cleaned_data/01_Filter_data_PREDICTS_Filtered_table.rds")
+
+# Import table with plants not dispersed by animals 
+PREDICTS_not_endoo_plants <- readRDS(file = "./output/cleaned_data/01_Filter_data_Plants_not_dispersed_by_animals.rds")
+
+# Modify the kingdom column in order to keep track of the plants not dispersed by animals
+PREDICTS_not_endoo_plants <- PREDICTS_not_endoo_plants %>% mutate(Kingdom = recode_factor(Kingdom, 
+                                                                                        "Plantae" = "nePlantae"))
+# Merge both tables
+frugi_endooPlants_notEndooPlants <- rbind.data.frame(diversityS, PREDICTS_not_endoo_plants)
+
+# Export merged table
+saveRDS(frugi_endooPlants_notEndooPlants, file = "./output/cleaned_data/01_Filter_data_frugi_endooPlants_notEndooPlants_records.rds")
+
+# Import table
+frugi_endooPlants_notEndooPlants <- readRDS(file = "./output/cleaned_data/01_Filter_data_frugi_endooPlants_notEndooPlants_records.rds")
+

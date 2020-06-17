@@ -1,0 +1,348 @@
+---
+title: "Abundance model"
+author: "Daniela Linero"
+date: "17/6/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_chunk$set(cache = TRUE)
+knitr::opts_chunk$set(error = TRUE)
+library(knitr)
+library(kableExtra)
+```
+
+
+```{r load libraries, include=FALSE, warning=FALSE}
+library(yarg) # useful functions for dealing with PREDICTS data
+library(roquefort) # useful PREDICTS functions, particularly for plotting
+library(raster) # for dealing with spatial data
+library(dplyr) # for handy data manipulation functions
+library(tidyr) # ditto
+library(lme4) # for mixed effects models
+library(car) # for getting anova tables with significance values
+library(DHARMa) # for model criticism plots
+library(MuMIn) # for checking explanatory power of mixed effects models
+library(stringr)
+library(kableExtra)
+```
+
+
+*1. Explore number of sites*
+
+```{r load data}
+
+# Import site metrics of plants not dispersed by animals, plants dispersed by endozoochory and
+# animals
+diversity5 <- readRDS( file = "./output/cleaned_data/02_Statistical_Analysis_Site_metrics_combined_animals_endooPlants_notEndooPlants.rds")
+
+```
+
+
+Plants not dispersed by animals have enough sites to separate them into:
+
+* Primary minimal, light and intense uses
+* ISv minimal and light-intense uses
+* Plantation forest minimal and light-intense uses
+* Everything else with  merge all intensities
+
+
+I will run in with those classes and then compare if it's better to merge everything.
+
+```{r land use classes}
+
+# Create a vector with the land uses categories that have enough sites to separate
+# them into different intensities
+LandUse_divide <- c("Primary", "ISV", "Plantation forest")
+
+fourth_model_data <- diversity5 %>%
+  # make a level of Primary minimal
+  mutate(
+    
+    # collapse primary forest and non-forest together into primary vegetation as these 
+    # aren't well distinguished
+    Predominant_land_use = recode_factor(Predominant_land_use, 
+                                         "Primary forest" = "Primary", 
+                                         "Primary non-forest" = "Primary"),
+    
+    # indeterminate secondary veg and cannot decide are transformed into NA, urban too because 
+    # it has only 40 sites. 
+    Predominant_land_use = na_if(Predominant_land_use, "Secondary vegetation (indeterminate age)"),
+    Predominant_land_use = na_if(Predominant_land_use, "Cannot decide"),
+    Predominant_land_use = na_if(Predominant_land_use, "Urban"),
+    
+    
+    # Give a shorter name to some land use categories 
+    Predominant_land_use = str_replace_all(Predominant_land_use, 
+                                           pattern = c("Young secondary vegetation" = "YSV",
+                                                      "Intermediate secondary vegetation" = "ISV", 
+                                                        "Mature secondary vegetation" = "MSV")),
+    
+    # Drop the Cannot decide intensity levels for the land-use categories that have 
+    # enough sites for the minimal, and light/intense
+    Use_intensity = ifelse(Predominant_land_use %in% LandUse_divide & Use_intensity == "Cannot decide",
+                           NA,
+                           paste(Use_intensity)), 
+    
+    # Join the intensity levels of light and intense for Plantation forest and ISV 
+    Use_intensity = ifelse((Predominant_land_use == "Plantation forest" | 
+                              Predominant_land_use == "ISV") &
+                             (Use_intensity == "Intense use" | 
+                                Use_intensity == "Light use"),
+                           str_replace_all(Use_intensity, 
+                                           pattern = c("Intense use" = "Light-intense use",
+                                                                      "Light use" = "Light-intense use")),
+                           paste(Use_intensity)),
+    
+    # Merge all the intensity levels for those land-use categories that don't have enough sites
+    # in each land-use type/intensity combination
+    Use_intensity = ifelse(Predominant_land_use %nin% LandUse_divide,
+                           str_replace_all(Use_intensity, pattern = c("Intense use" = "All", 
+                                                                      "Light use" = "All", 
+                                                                      "Minimal use" = "All", 
+                                                                      "Cannot decide" = "All")), 
+                           paste(Use_intensity)),
+    
+    
+    # Paste the land-use classes and intensity levels
+    LandUse = ifelse(Predominant_land_use != "NA" & Use_intensity != "NA",
+                     paste(Predominant_land_use, Use_intensity),
+                     NA),
+    
+    # set reference level
+    LandUse = factor(LandUse),
+    LandUse = relevel(LandUse, ref = "Primary Minimal use")
+    
+  )
+
+
+```
+
+*2. Test for collinearity *
+
+Since I'm going to explore the collinearity between categorical variables, I'm going to use 
+the Generalized variance Inflation Factors function provided by Zuur et al., (2009)
+
+```{r collinearity}
+
+# Get the function
+source("https://highstat.com/Books/Book2/HighstatLibV10.R")
+
+# Calculate the VIF
+corvif(fourth_model_data[ , c("LandUse", "Kingdom")])
+
+```
+
+*3. Complete cases*
+
+```{r complete 1}
+
+# Drop sites that don't have abundance measures or land-use data
+fourth_model_data1 <- drop_na(fourth_model_data, 
+                              Total_abundance, LandUse) %>% droplevels()
+
+
+# Check the number of sites for animals and plants
+addmargins(table(fourth_model_data1$LandUse, fourth_model_data1$Kingdom), 2)
+
+```
+
+*4. Transform rescaled abundance measures*
+
+Abundance data usually display a nonnormal error distribution because they have a positive mean-variance relationship and are zero-inflated (Purvis et al., 2018).  Given that some abudance measures are not integers (some are relative abudance or densities), I am not going to model the abudance with a Poisson distribution, but I'm going to transform it in order to meet the assumptions of linear mixed models.
+
+```{r transform 1}
+# Transform RescaledAbundance.
+fourth_model_data2 <- mutate(fourth_model_data1, 
+                            logAbundance = log(RescaledAbundance + 1),
+                            sqrtAbundance = sqrt(RescaledAbundance)
+)
+
+
+```
+
+*5. Select random effects structure*
+
+
+To select the random-effects structure, we use the method recommended by (Zuur et al., 2009) 
+of taking the most complex fixed-effects structure, including all interactions, that will be 
+tested in the second stage of modelling, and use it to compare different random-effects 
+structures.
+
+```{r m41}
+m4_1 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB), data = fourth_model_data2)
+```
+
+
+
+```{r m42}
+m4_2 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB) + (1|Source_ID), data = fourth_model_data2)
+```
+
+
+```{r m43, warning=TRUE}
+m4_3 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1+LandUse|SS) + (1|SSB), data = fourth_model_data2)
+```
+
+
+```{r m45, warning=TRUE}
+m4_5 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1+Predominant_land_use|SS) + (1|SSB), data = fourth_model_data2)
+```
+
+
+
+```{r AIC1}
+# Compare the models that converged
+AIC(m4_1, m4_2)
+```
+
+
+*6. Select fixed effect structure*
+
+```{r anova 1}
+# See the significance of the terms in the model.
+Anova(m4_2)
+```
+
+The Land_use:kingdom interaction is significant, so I won’t remove this term from the model. 
+
+*7. plot residuals*
+
+```{r residuals 1}
+simulationOutput4 <- simulateResiduals(fittedModel = m4_2, plot = TRUE)
+
+```
+
+*8. Model estimates*
+
+Table with confidence intervals
+
+```{r CI model 2}
+CI_m4_2 <- read.csv("./output/summary_m4_2.csv", header = TRUE, sep = ";")
+kable(CI_m4_2, format="latex", booktabs=TRUE) %>% 
+  kable_styling(latex_options="scale_down")
+```
+
+*9. Merge all land-use intensities*
+
+```{r merge2}
+
+# make a copy of the database: 
+WH_merged <- fourth_model_data2
+
+# Same model but with log 
+m4_2l <- lmer(logAbundance~ LandUse + Kingdom + LandUse:Kingdom +
+                (1|SS) + (1|SSB) + (1|Source_ID), data = WH_merged)
+
+# Merge land-use intensities for the fourth_model_data2
+WH_merged <- WH_merged %>% mutate(
+  
+  # Merge all the intensity levels for all land-use categories 
+  Use_intensity = ifelse(Use_intensity != "NA", "All", "NA"),
+  
+  # Paste the land-use classes and intensity levels
+  LandUse = ifelse(Predominant_land_use != "NA" & Use_intensity != "NA",
+                   paste(Predominant_land_use, Use_intensity),
+                   NA),
+  
+  # set reference level
+  LandUse = factor(LandUse),
+  LandUse = relevel(LandUse, ref = "Primary All")
+  
+  
+)
+
+# same model but with log
+m4_2_ml <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+                  (1|SS) + (1|SSB) + (1|Source_ID), data = WH_merged)
+```
+
+
+Next, I will check if I’ve lost a significant amount of explanatory power by merging some land-use intensities.If I have, I want to keep the more complex model. If I haven’t lost a significant amount of explanatory power, then I can keep this simpler model. 
+
+```{r}
+anova(m4_2_ml, m4_2l, test = "F")
+```
+
+
+The LRT is significant, so by removing the interaction from the model, I did lose a significant amount of explanatory power. This means that I should keep the more complex model. 
+
+
+*9. Plant contrast*
+
+What I'm going to do is a Plant contrast, that means I'm firts going to model the complex model
+(the one that assummes the reponse between endo and not-endo plants is significantly different), in this model I will  use the Kingdom interaction that has 3 levels: animals and endo plants and not endo plants. Then I am going to model the null model that assumes there is no difference between endo and not-endo plants. In this model the Kingdom will have 2 levels: animals, plants. Then I will compare both models using an ANOVA
+
+```{r merge 3}
+# make a copy of the database: 
+WI_merged <- fourth_model_data2
+```
+
+
+```{r model 42 1}
+# According to the last steps, our complex model is:
+m4_2 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB) + (1|Source_ID), data = WI_merged)
+```
+
+
+```{r merge 4}
+# For the null model I am going to replace the nePlantae for Plantae 
+WI_merged <- WI_merged %>%
+  
+  # Replace nePlantae for Plantae
+  mutate(
+    Kingdom = recode_factor(Kingdom, "nePlantae" = "Plantae"), 
+
+# set reference level
+LandUse = factor(LandUse),
+LandUse = relevel(LandUse, ref = "Primary Minimal use"), 
+Kingdom = factor(Kingdom),
+Kingdom = relevel(Kingdom, ref = "Animalia"))
+
+
+```
+
+```{r model s1}
+m4_2_m <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB) + (1|Source_ID), data = WI_merged)
+```
+
+Compare complex and null model:
+
+```{r model s2}
+anova(m4_2_m, m4_2, test = "F")
+
+```
+
+*10. Plot the results of the selected abundance model*
+
+```{r plot plot}
+# Read r code from a file which contains the function to make the plot
+source("./R/PlotErrBar_interactions.R")
+source("./R/PlotErrBar_interactions_modified.R")
+
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = m4_2, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
+                             ylims = c(-0.25,0.25), pointtype = c(16,17,18),blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), y = -0.18, labels = c("Primary minimal use",
+                                            "Cropland all uses",
+                                            "ISV light-intense use",
+                                            "ISV minimal use",
+                                            "MSV all uses",
+                                            "Pasture all uses",
+                                            "Plantation forest light-intense use",
+                                            "Plantation forest minimal use",
+                                            "Primary intense use",
+                                            "Primary light use",
+                                            "YSV all uses"), srt = 18, cex= 0.9)
+```
+

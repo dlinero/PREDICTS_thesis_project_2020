@@ -15,6 +15,10 @@ library(MuMIn) # for checking explanatory power of mixed effects models
 library(stringr) # to replace text
 library(lmerTest) # to get p-values for estimates in LMMs
 
+# ---- Description --------------------------------------------------------------------
+
+# Model rescaled total abundance against land use type and intensity
+
 # ---- 1. Load data ------------------------------------------------------------------
 
 diversity <- readRDS("./output/cleaned_data/01_Filter_data_PREDICTS_Filtered_table.rds")
@@ -24,7 +28,7 @@ diversity <- readRDS("./output/cleaned_data/01_Filter_data_PREDICTS_Filtered_tab
 # The CorrectSamplingEffort function groups the dataset by SS and :
 # 1. Finds the maximum value of Sampling effort
 # 2. Divides every sampling effort value by the maximum value within each study. 
-# 3. Then it takes the measurement and divides it by the rescaled sampling effort. 
+# 3. Then it takes the abundance measure and divides it by the rescaled sampling effort. 
 
 diversity1 <- yarg::CorrectSamplingEffort(diversity) 
 
