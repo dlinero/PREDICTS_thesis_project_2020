@@ -85,10 +85,10 @@ check <- diversity3[which(is.nan(diversity3$RescaledAbundance)), ]
 diversity4 <- diversity3[-which(is.nan(diversity3$RescaledAbundance)),]
 
 # Export table
-saveRDS(diversity4, file = "./output/cleaned_data/02_Statistical_Analysis_Site_metrics.rds")
+saveRDS(diversity4, file = "./output/cleaned_data/02_Statistical_Analysis_Abundance_Site_metrics_frugi_endooPlants.rds")
 
 # Import table
-diversity4 <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Site_metrics.rds")
+diversity4 <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Abundance_Site_metrics_frugi_endooPlants.rds")
 
 ############################## MODEL TESTING #################################
 
@@ -820,10 +820,10 @@ PREDICTS_not_endoo_plants3 <- PREDICTS_not_endoo_plants2 %>%
                                     NA))
 
 # Export table
-saveRDS(PREDICTS_not_endoo_plants3, file = "./output/cleaned_data/02_Statistical_Analysis_Site_metrics_not_endoo_plants.rds")
+saveRDS(PREDICTS_not_endoo_plants3, file = "./output/cleaned_data/02_Statistical_Analysis_Abundance_Site_metrics_not_endoo_plants.rds")
 
 # Import table
-PREDICTS_not_endoo_plants3 <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Site_metrics_not_endoo_plants.rds")
+PREDICTS_not_endoo_plants3 <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Abundance_Site_metrics_not_endoo_plants.rds")
 
 # Check number of sites
 addmargins(table(PREDICTS_not_endoo_plants3$Predominant_land_use, PREDICTS_not_endoo_plants3$Use_intensity), 2)
@@ -888,10 +888,10 @@ PREDICTS_not_endoo_plants3[, "Kingdom"] <- "nePlantae"
 diversity5 <- rbind(diversity4, PREDICTS_not_endoo_plants3)
 
 # Export table 
-saveRDS(diversity5, file = "./output/cleaned_data/02_Statistical_Analysis_Site_metrics_combined_animals_endooPlants_notEndooPlants.rds")
+saveRDS(diversity5, file = "./output/cleaned_data/02_Statistical_Analysis_Abundance_Site_metrics_combined_animals_endooPlants_notEndooPlants.rds")
 
 # Import table 
-diversity5 <- readRDS( file = "./output/cleaned_data/02_Statistical_Analysis_Site_metrics_combined_animals_endooPlants_notEndooPlants.rds")
+diversity5 <- readRDS( file = "./output/cleaned_data/02_Statistical_Analysis_Abundance_Site_metrics_combined_animals_endooPlants_notEndooPlants.rds")
 
 # Since the not_endoo plants have enough sites to separate primary into light, minimal and intense, and 
 # also YSV and plantation forest into minimal and light/intense. I will try to run in with

@@ -14,18 +14,22 @@ library(MuMIn) # for checking explanatory power of mixed effects models
 library(stringr) # to replace text
 library(lmerTest) # to get p-values for estimates in LMMs
 
+
 # --- Description -----------------------------------------------------------------
 
-# Model Within-sample species richness as the number of total species sampled in eahc site. 
+# Model Within-sample species richness as the number of total species sampled in each site. 
 
 
 # ---- 1. Load data ------------------------------------------------------------------
 
-diversitS <- readRDS("./output/cleaned_data/01_Filter_data_PREDICTS_Filtered_table.rds")
+# Load the table that contains the frugivore information along with the plants dispersed
+# and not dispersed by animals 
+
+diversityS <- readRDS(file = "./output/cleaned_data/01_Filter_data_frugi_endooPlants_notEndooPlants_records.rds")
 
 # ---- 2. Select studies with more than one species ---------------------------------
 
-# According to Phillips et al., (2017) "2.	Studies where the sampling focused on a 
+# According to Phillips et al., (2017) "Studies where the sampling focused on a 
 # single species or a predetermined list of species (rather than recording any species
 # within the focal taxonomic or ecological group that was sampled) were removed to 
 # avoid biasing species-richness estimates". 
@@ -33,7 +37,7 @@ diversitS <- readRDS("./output/cleaned_data/01_Filter_data_PREDICTS_Filtered_tab
 # So, for now, I'm just going to remove studies that focused on a single species
 
 # Filter the data needed to run the model
-diversity1S <- diversity  %>% 
+diversityS <- diversityS  %>% 
 
   # By grouping by SS we are comparing sites with the same diversity metric type
   # either abundance or occurence 
@@ -52,42 +56,71 @@ diversity1S <- diversity  %>%
   droplevels()
 
 # Minimum number of species sampled
-min(diversity1$N_species_sampled)
+min(diversityS$N_species_sampled)
 
 # Maximum number of species sampled
-max(diversity1$N_species_sampled)
+max(diversityS$N_species_sampled)
 
 # Remove N_species_sampled_column
-diversity1S <- diversity1S %>% select(-N_species_sampled)
+diversityS <- diversityS %>% select(-N_species_sampled)
 
-# ---- 3. Merge Sites -------------------------------------------------------------
+# ----3. Remove sites that will produce NaN values --------------------------------------------
+# Doing the abundance models, I identified some sites where (due to the filtering of specific species)
+# recorded only zero abundances. I am going to remove those sites as they will produce 
+# Non infinite values. 
+
+diversityS <- diversityS %>%  subset(SSBS %nin% c("MJ1_2009__Lehouck 2 Fururu 10", 
+                                                                          "MJ1_2009__Lehouck 2 Fururu 11", 
+                                                                          "MJ1_2009__Lehouck 2 Macha 12", 
+                                                                          "MJ1_2009__Lehouck 2 Macha 13")) %>%
+  droplevels()
+
+# ---- 4. Split datasets --------------------------------------------------------
+
+# I am going to separate the records that belong to plants not dispersed by animals
+diversityS_notEndo <- diversityS %>% subset(Kingdom == "nePlantae") %>% droplevels()
+
+# Get the table without plants dispersed by animals
+diversityS_frugi_endo <- diversityS %>% subset(Kingdom != "nePlantae") %>% droplevels()
+
+# ---- 5. Merge Sites for animals and Endooplants-------------------------------------------------------------
 
 # We merge sites within studies that have identical coordinates, start and end dates(and land-use 
 # type and intensity). We do this because sometimes authors record different points in a transect as
 # different sites, which might not be meaningful if they share land-use, intensity and coordinates (the
 # coordinates have an error) OR maybe it is, but we are having a conservative approach
 
-diversity2S <- yarg::MergeSites(diversity1S,
-                               silent = TRUE,
-                               merge.extra = "Wilderness_area")
+diversityS_frugi_endo <- yarg::MergeSites(diversityS_frugi_endo, silent = TRUE, 
+                                           merge.extra = "Wilderness_area")
 
-# ----4. Rename Predominant habitat --------------------------------------------------
+diversityS_notEndo <- yarg::MergeSites(diversityS_notEndo, silent = TRUE, 
+                                           merge.extra = "Wilderness_area")
+
+# ----6. Rename Predominant habitat --------------------------------------------------
 
 # Rename the column predominant habitat, as the dataset is actually refering to land use
-diversity2S <- rename(diversity2S,
-                     Predominant_land_use = Predominant_habitat)
+diversityS_frugi_endo <-  rename(diversityS_frugi_endo,
+                      Predominant_land_use = Predominant_habitat)
 
-# ----5. Remove sites that will produce NaN values --------------------------------------------
+diversityS_notEndo <-  rename(diversityS_notEndo,
+                                 Predominant_land_use = Predominant_habitat)
 
-diversity2S <- diversity2S %>%  subset(SSBS %nin% c("MJ1_2009__Lehouck 2 Fururu 10", 
-                                                    "MJ1_2009__Lehouck 2 Fururu 11", 
-                                                    "MJ1_2009__Lehouck 2 Macha 12", 
-                                                    "MJ1_2009__Lehouck 2 Macha 13")) %>%
-  droplevels()
 
-# ----5.  Calculate diversity metrics -----------------------------------------------
+# ----7.  Calculate diversity metrics -----------------------------------------------
 
-diversity3S <- diversity2S %>%
+# Calculate diversity metrics for animals and endoozoocoric plants
+diversity1S_frugi_endo <- diversityS_frugi_endo %>%
+  
+  # add Diversity_metric_is_valid column
+  mutate(Diversity_metric_is_valid = TRUE) %>%
+  
+  # The extra.cols parameter is used for columns that we want to 
+  # transferred to the final site-level data frame and that the function 
+  # does not add  automatically
+  yarg::SiteMetrics(extra.cols = c("SSB", "SSBS", "Predominant_land_use", "Kingdom")) 
+
+# Calculate diversity metrics for plants not dispersed by animals
+diversity1S_notendo <- diversityS_notEndo %>%
   
   # add Diversity_metric_is_valid column
   mutate(Diversity_metric_is_valid = TRUE) %>%
@@ -98,14 +131,253 @@ diversity3S <- diversity2S %>%
   yarg::SiteMetrics(extra.cols = c("SSB", "SSBS", "Predominant_land_use", "Kingdom")) 
 
 
+# ---8. Check the results--------------------------------------------------------------------
+
+# Check the results for studies that assessed abundance
+diversityS_frugi_endo %>% 
+  
+  # subset the table with all of the species records
+  subset(SSS == "BS1_2010__Page 1 1") %>%
+  
+  # Select species that have an abundance greater than zero
+  filter(Measurement > 0) %>%
+  
+  # Create a column with the number of species present
+  mutate(Species_richness = n_distinct(Taxon_name_entered)) %>%
+  
+  select(SSS, Taxon_name_entered, Measurement, Species_richness) 
+
+# Compare with the SiteMetrics result
+diversity1S_frugi_endo %>% subset(SSS == "BS1_2010__Page 1 1") %>% select(SSS, Species_richness)
+
+# Check the results for studies that assessed abundance
+diversityS_notEndo %>% 
+  
+  # subset the table with all of the species records
+  subset(SSS == "CM1_2007__MarinSpiotta 1 1") %>%
+  
+  # Select species that have an abundance greater than zero
+  filter(Measurement > 0) %>%
+  
+  # Create a column with the number of species present
+  mutate(Species_richness = n_distinct(Taxon_name_entered)) %>%
+  
+  select(SSS, Taxon_name_entered, Measurement, Species_richness) 
+
+# Compare with the SiteMetrics result
+diversity1S_notendo %>% subset(SSS == "CM1_2007__MarinSpiotta 1 1") %>% select(SSS, Species_richness)
+
+# Check the results with studies that occurrence
+diversityS_frugi_endo %>% 
+  
+  # subset the table with all of the species records
+  subset(SSS == "DL1_2011__Latta 2 1") %>%
+  
+  # Select species that are present in the site 
+  filter(Measurement == 1) %>% 
+  
+  # Create a column with the number of species present
+  mutate(Species_richness = n_distinct(Taxon_name_entered)) %>%
+  
+  select(SSS, Taxon_name_entered, Measurement, Species_richness) 
+
+# Compare with the SiteMetrics result
+diversity1S_frugi_endo %>% subset(SSS == "DL1_2011__Latta 2 1") %>% select(SSS, Species_richness)
+
+# Check the results with studies that occurrence
+diversityS_notEndo %>% 
+  
+  # subset the table with all of the species records
+  subset(SSS == "CM2_2012__Cicuzza 1 1") %>%
+  
+  # Select species that are present in the site 
+  filter(Measurement == 1) %>% 
+  
+  # Create a column with the number of species present
+  mutate(Species_richness = n_distinct(Taxon_name_entered)) %>%
+  
+  select(SSS, Taxon_name_entered, Measurement, Species_richness) 
+
+# Compare with the SiteMetrics result
+diversity1S_notendo %>% subset(SSS == "CM2_2012__Cicuzza 1 1") %>% select(SSS, Species_richness)
+
+# ---9. Merge site metrics -------------------------------------------------------------------
+# Merge the site metrics for all organisms
+
+diversity_all <- rbind.data.frame(diversity1S_frugi_endo, diversity1S_notendo)
+
 # Export table
-saveRDS(diversity3S, file = "./output/cleaned_data/02_Statistical_Analysis_Site_metrics_animals_endoo_richness.rds")
+saveRDS(diversity_all, file = "./output/cleaned_data/02_Statistical_Analysis_Richness_Site_metrics_animals_endooPlants_notendooPlants.rds")
 
 # Import table
-diversity4 <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Site_metrics.rds")
+diversity_all <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Richness_Site_metrics_animals_endooPlants_notendooPlants.rds")
 
 
+############################## MODEL TESTING #################################
+
+# ---10. Simple model ----------------------------------------------------------------------
+
+# What I'm going to do is a Plant contrast, that means I'm firts going to model the complex model
+# (the one that assumme the reponse between endo and not-endo plants is significantly different), in this model 
+# I will  put the Kingdom interaction that has 3 levels: animals and endo plants and not endo plants. Then I am going
+# to model the null model that assumes there is no difference between endo and not-endo plants. In this model
+# the Kingdom will have 2 levels: animals and plants. Then I will compare both models using an ANOVA
+
+# 10.1. Checking number of sites -------------------------------------------------------------
+
+# I will fisrt explore the number of sites that have a known land use category
+
+diversity_all <- diversity_all %>%
+  # make a level of Primary minimal
+  mutate(
+    
+    # Create a new land-use column to store the transformations we are going to make
+    Predominant_land_use_1 = paste(Predominant_land_use), 
+    
+    # collapse primary forest and non-forest together into primary vegetation as these aren't well distinguished
+    Predominant_land_use_1 = recode_factor(Predominant_land_use_1, 
+                                         "Primary forest" = "Primary", 
+                                         "Primary non-forest" = "Primary"),
+    
+    # indeterminate secondary veg and cannot decide are transformed into NA, urban too 
+    Predominant_land_use_1 = na_if(Predominant_land_use_1, "Secondary vegetation (indeterminate age)"),
+    Predominant_land_use_1 = na_if(Predominant_land_use_1, "Cannot decide"),
+    Predominant_land_use_1 = na_if(Predominant_land_use_1, "Urban"),
+    
+    
+    # Give a shorter name to some land use categories 
+    Predominant_land_use_1 = str_replace_all(Predominant_land_use_1, pattern = c("Young secondary vegetation" = "YSV",
+                                                                             "Intermediate secondary vegetation" = "ISV", 
+                                                                             "Mature secondary vegetation" = "MSV")),
+    
+    Predominant_land_use_1 = factor(Predominant_land_use_1),
+    Predominant_land_use_1 = relevel(Predominant_land_use_1, ref = "Primary")
+  )
 
 
+# Drop sites that don't have richness measures or land-use data
+diversity_all <- drop_na(diversity_all, 
+                                  Species_richness, Predominant_land_use_1) %>% droplevels()
+
+# Check number of sites
+addmargins(table(diversity_all$Predominant_land_use_1, diversity_all$Use_intensity, diversity_all$Kingdom), 2)
 
 
+# 10.2. Merging land-use intensities  -------------------------------------------------------------
+# According to the number of sites, we can split the land-use types and intensities in:
+
+# Primary can be divided into the three level intensities in all cases
+#	Cropland can be divided in minimal use and light/intense use in animal, endo plant and non endo plant
+# ISV can be divided in minimal use and light/intense use in animal, endo plant and non endo plant
+# MSV has to be merged
+# Pasture has to be merged 
+# Plantation forest can be divided in minimal use and light/intense use in animal, endo plant and non endo plant
+#	YSV has to be merged 
+
+# Create a vector with the land uses categories that have enough sites to separate them 
+# into different intensities
+LandUse_divide_r <- c("Primary", "Cropland", "ISV", "Plantation forest")
+
+
+diversity_all <- diversity_all %>%
+  
+  mutate(
+    
+    # Create a new column for Use intensity to not overwrite the original
+    Use_intensity_1 = paste(Use_intensity),
+    
+    # Drop the Cannot decide intensity levels for the land-use categories that have 
+    # enough sites for the minimal, and light/intense
+    Use_intensity_1 = ifelse(Predominant_land_use_1 %in% LandUse_divide_r & Use_intensity_1 == "Cannot decide",
+                           NA,
+                           paste(Use_intensity_1)), 
+    
+    # Join the intensity levels of light and intense for cropland, plantation forest and ISV 
+    Use_intensity_1 = ifelse((Predominant_land_use_1 == "Plantation forest" |
+                              Predominant_land_use_1 == "ISV" |
+                              Predominant_land_use_1 == "Cropland") & 
+                             (Use_intensity_1 == "Intense use" | 
+                                Use_intensity_1 == "Light use"),
+                           str_replace_all(Use_intensity_1,
+                                           pattern = c("Intense use" = "Light-intense use", 
+                                                       "Light use" = "Light-intense use")), 
+                           paste(Use_intensity_1)),
+    
+    # Merge all the intensity levels for those land-use categories that don't have enough sites in each land-use type/intensity combination
+    Use_intensity_1 = ifelse(Predominant_land_use_1 %nin% LandUse_divide_r,
+                           str_replace_all(Use_intensity_1, pattern = c("Intense use" = "All", 
+                                                                      "Light use" = "All", 
+                                                                      "Minimal use" = "All", 
+                                                                      "Cannot decide" = "All")), 
+                           paste(Use_intensity_1)),
+    
+    
+    # Paste the land-use classes and intensity levels
+    LandUse = ifelse(Predominant_land_use_1 != "NA" & Use_intensity_1 != "NA",
+                     paste(Predominant_land_use_1, Use_intensity_1),
+                     NA),
+    
+    # set reference level
+    LandUse = factor(LandUse),
+    LandUse = relevel(LandUse, ref = "Primary Minimal use")
+  )
+
+# ---10.3. Test for collinearity  ----------------------------------------------------------------------
+
+# Since I'm going to explore the collinearity between categorical variables, I'm going to use 
+# the Generalized variance Inflation Factors function provided by Zuur et al., (2009)
+
+# Get the function
+source("https://highstat.com/Books/Book2/HighstatLibV10.R")
+
+# Calculate the VIF
+corvif(diversity_all[ , c("LandUse", "Kingdom")])
+
+# ---10.4. Complete cases --------------------------------------------------------------------------------
+
+# Create a table with complete cases
+diversity_all <- drop_na(diversity_all, 
+                              Species_richness, LandUse) %>% droplevels()
+
+# Check number of sites
+table(diversity_all$LandUse, diversity_all$Kingdom)
+
+# ---10.5. Choose between GLMM or LMM -----------------------------------------------------------------
+
+# Species richness was modelled with Poisson error distribution and log-link function;
+# there was evidence of significant overdispersion in these models so an observation-level
+# random effect was included to account for this (i.e., a Poisson-lognormal model)(De Palma et al., 2016).
+
+hist(diversity_all$Species_richness)
+
+# ---10.6 Choose random effects structure  -----------------------------------------------------------------
+
+# To select the random-effects structure, we use the method recommended by (Zuur et al., 2009) 
+# of taking the most complex fixed-effects structure, including all interactions, that will be 
+# tested in the second stage of modelling, and use it to compare different random-effects 
+# structures.
+
+m1 <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB), data = diversity_all, family = poisson)
+
+m4_2 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1|SS) + (1|SSB) + (1|Source_ID), data = fourth_model_data2)
+
+m4_3 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1+LandUse|SS) + (1|SSB), data = fourth_model_data2)
+# IsSingular
+
+m4_4 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1+LandUse|SS) + (1|SSB) + (1|Source_ID), data = fourth_model_data2)
+# IsSingular
+
+m4_5 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1+Predominant_land_use|SS) + (1|SSB), data = fourth_model_data2)
+# IsSingular
+
+m4_6 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
+               (1+Predominant_land_use|SS) + (1|SSB) + (1|Source_ID), data = fourth_model_data2)
+# IsSingular
+
+# Compare the models that converged
+AIC(m4_1, m4_2)
