@@ -12,6 +12,7 @@ library(car) # for getting anova tables with significance values
 library(DHARMa) # for model criticism plots
 library(MuMIn) # for checking explanatory power of mixed effects models
 library(stringr) # to replace text
+library(aods3) # to check for overdispersion
 library(lmerTest) # to get p-values for estimates in LMMs
 
 
@@ -358,26 +359,123 @@ hist(diversity_all$Species_richness)
 # structures.
 
 m1 <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
-               (1|SS) + (1|SSB), data = diversity_all, family = poisson)
+              (1|SS) + (1|SSB), data = diversity_all, family = poisson)
 
-m4_2 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-               (1|SS) + (1|SSB) + (1|Source_ID), data = fourth_model_data2)
+# Warning message:
+#In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+# Model failed to converge with max|grad| = 0.0399178 (tol = 0.002, component 1)
 
-m4_3 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-               (1+LandUse|SS) + (1|SSB), data = fourth_model_data2)
-# IsSingular
+m1 <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
+              (1|SS) + (1|SSB), data = diversity_all, family = poisson, 
+            
+            # I'm increasing the number of iterations as the model initially 
+            # didn't converge
+            control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
 
-m4_4 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-               (1+LandUse|SS) + (1|SSB) + (1|Source_ID), data = fourth_model_data2)
-# IsSingular
 
-m4_5 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-               (1+Predominant_land_use|SS) + (1|SSB), data = fourth_model_data2)
-# IsSingular
+m2 <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
+              (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_all, family = poisson, 
+            control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
 
-m4_6 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-               (1+Predominant_land_use|SS) + (1|SSB) + (1|Source_ID), data = fourth_model_data2)
-# IsSingular
+m3 <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
+              (1+LandUse|SS) + (1|SSB), data = diversity_all, family = poisson, 
+            control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+# Is singular
+
+m4 <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
+              (1+Predominant_land_use_1|SS) + (1|SSB), data = diversity_all, family = poisson, 
+            control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+# Is singular
 
 # Compare the models that converged
-AIC(m4_1, m4_2)
+AIC(m1, m2)
+
+# ---10.6 Choose fixed effects structure  -----------------------------------------------------------------
+
+# See the significance of the terms in the model.
+Anova(m2)
+
+# The Land_use:kingdom interaction is significant, so I won’t remove this term 
+# from the model. 
+
+# ---10.7 Model estimates  -----------------------------------------------------------------
+summary(m2)
+
+# Export summary
+require(broom)
+out <- tidy(m4_2)
+
+# ---10.8 Plot residuals: ----------------------------------------------------------------
+
+simulationOutput <- simulateResiduals(fittedModel = m2)
+# Acces the qq plot
+plotQQunif(simulationOutput)
+# Plot the residuals against the predicted value 
+plotResiduals(simulationOutput)
+
+# ---10.9. Test for overdispersion: ----------------------------------------------------------------
+
+# I am going to use the Ben Bolker's function available at:
+# https://bbolker.github.io/mixedmodels-misc/glmmFAQ.html#overdispersion
+
+overdisp_fun <- function(model) {
+  rdf <- df.residual(model)
+  rp <- residuals(model,type="pearson")
+  Pearson.chisq <- sum(rp^2)
+  prat <- Pearson.chisq/rdf
+  pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
+  c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
+}
+
+overdisp_fun(m2)
+
+# Or using the aods3 package
+gof(m2)
+
+
+# ---10.10. Model with quasipoisson: -------------------------------------------------------------- 
+# I am going to add an observation-level random effects
+
+m2_q <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
+                (1|SS) + (1|SSB) + (1|Source_ID) + (1|SSBS), data = diversity_all, family = poisson, 
+              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+# ---10.11 Plot residuals: ----------------------------------------------------------------
+
+simulationOutputq <- simulateResiduals(fittedModel = m2_q)
+# Acces the qq plot
+plotQQunif(simulationOutputq)
+# Plot the residuals against the predicted value 
+plotResiduals(simulationOutputq)
+
+overdisp_fun(m2_q)
+
+# ---12.10. Plot results: ----------------------------------------------------------------
+
+# Read r code from a file which contains the function to make the plot
+source("./R/PlotErrBar_interactions.R")
+source("./R/PlotErrBar_interactions_modified.R")
+
+# Check the order of the plot labels
+PlotErrBar_interactions(model = m2_q, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
+                        ylims = c(-2.5,2.5), pointtype = c(16,17,18),blackwhite = FALSE)
+
+
+
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = m2_q, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
+                             ylims = c(-3,2.5), pointtype = c(16,17, 18),blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), y = -3, labels = c("Primary M",
+                                            "Cropland LI",
+                                            "Cropland M",
+                                            "ISV LI",
+                                            "ISV M",
+                                            "MSV A",
+                                            "Pasture A",
+                                            "Plantation LI",
+                                            "Plantation M",
+                                            "Primary I",
+                                            "Primary L",
+                                            "YSV A"), srt = 18, cex= 0.7)
