@@ -39,14 +39,14 @@ diversityS <- readRDS(file = "./output/cleaned_data/01_Filter_data_frugi_endooPl
 
 # Filter the data needed to run the model
 diversityS <- diversityS  %>% 
-
+  
   # By grouping by SS we are comparing sites with the same diversity metric type
   # either abundance or occurence 
   group_by(SS) %>%
   
   # Create a new column to calculate the number of species sampled per study 
   # n_distinct = length(unique())
-   mutate(N_species_sampled = n_distinct(Taxon_name_entered)) %>%
+  mutate(N_species_sampled = n_distinct(Taxon_name_entered)) %>%
   
   # ungroup data frame  
   ungroup() %>%
@@ -71,9 +71,9 @@ diversityS <- diversityS %>% select(-N_species_sampled)
 # Non infinite values. 
 
 diversityS <- diversityS %>%  subset(SSBS %nin% c("MJ1_2009__Lehouck 2 Fururu 10", 
-                                                                          "MJ1_2009__Lehouck 2 Fururu 11", 
-                                                                          "MJ1_2009__Lehouck 2 Macha 12", 
-                                                                          "MJ1_2009__Lehouck 2 Macha 13")) %>%
+                                                  "MJ1_2009__Lehouck 2 Fururu 11", 
+                                                  "MJ1_2009__Lehouck 2 Macha 12", 
+                                                  "MJ1_2009__Lehouck 2 Macha 13")) %>%
   droplevels()
 
 # ---- 4. Split datasets --------------------------------------------------------
@@ -92,19 +92,19 @@ diversityS_frugi_endo <- diversityS %>% subset(Kingdom != "nePlantae") %>% dropl
 # coordinates have an error) OR maybe it is, but we are having a conservative approach
 
 diversityS_frugi_endo <- yarg::MergeSites(diversityS_frugi_endo, silent = TRUE, 
-                                           merge.extra = "Wilderness_area")
+                                          merge.extra = "Wilderness_area")
 
 diversityS_notEndo <- yarg::MergeSites(diversityS_notEndo, silent = TRUE, 
-                                           merge.extra = "Wilderness_area")
+                                       merge.extra = "Wilderness_area")
 
 # ----6. Rename Predominant habitat --------------------------------------------------
 
 # Rename the column predominant habitat, as the dataset is actually refering to land use
 diversityS_frugi_endo <-  rename(diversityS_frugi_endo,
-                      Predominant_land_use = Predominant_habitat)
+                                 Predominant_land_use = Predominant_habitat)
 
 diversityS_notEndo <-  rename(diversityS_notEndo,
-                                 Predominant_land_use = Predominant_habitat)
+                              Predominant_land_use = Predominant_habitat)
 
 
 # ----7.  Calculate diversity metrics -----------------------------------------------
@@ -228,40 +228,12 @@ diversity_all <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Richness
 
 # I will fisrt explore the number of sites that have a known land use category
 
-diversity_all <- diversity_all %>%
-  # make a level of Primary minimal
-  mutate(
-    
-    # Create a new land-use column to store the transformations we are going to make
-    Predominant_land_use_1 = paste(Predominant_land_use), 
-    
-    # collapse primary forest and non-forest together into primary vegetation as these aren't well distinguished
-    Predominant_land_use_1 = recode_factor(Predominant_land_use_1, 
-                                         "Primary forest" = "Primary", 
-                                         "Primary non-forest" = "Primary"),
-    
-    # indeterminate secondary veg and cannot decide are transformed into NA, urban too 
-    Predominant_land_use_1 = na_if(Predominant_land_use_1, "Secondary vegetation (indeterminate age)"),
-    Predominant_land_use_1 = na_if(Predominant_land_use_1, "Cannot decide"),
-    Predominant_land_use_1 = na_if(Predominant_land_use_1, "Urban"),
-    
-    
-    # Give a shorter name to some land use categories 
-    Predominant_land_use_1 = str_replace_all(Predominant_land_use_1, pattern = c("Young secondary vegetation" = "YSV",
-                                                                             "Intermediate secondary vegetation" = "ISV", 
-                                                                             "Mature secondary vegetation" = "MSV")),
-    
-    Predominant_land_use_1 = factor(Predominant_land_use_1),
-    Predominant_land_use_1 = relevel(Predominant_land_use_1, ref = "Primary")
-  )
-
-
 # Drop sites that don't have richness measures or land-use data
 diversity_all <- drop_na(diversity_all, 
-                                  Species_richness, Predominant_land_use_1) %>% droplevels()
+                         Species_richness, Predominant_land_use) %>% droplevels()
 
 # Check number of sites
-addmargins(table(diversity_all$Predominant_land_use_1, diversity_all$Use_intensity, diversity_all$Kingdom), 2)
+addmargins(table(diversity_all$Predominant_land_use, diversity_all$Use_intensity, diversity_all$Kingdom), 2)
 
 
 # 10.2. Merging land-use intensities  -------------------------------------------------------------
@@ -275,53 +247,21 @@ addmargins(table(diversity_all$Predominant_land_use_1, diversity_all$Use_intensi
 # Plantation forest can be divided in minimal use and light/intense use in animal, endo plant and non endo plant
 #	YSV has to be merged 
 
-# Create a vector with the land uses categories that have enough sites to separate them 
-# into different intensities
-LandUse_divide_r <- c("Primary", "Cropland", "ISV", "Plantation forest")
+
+# Call the function that merges lan-uses and intensities
+source("./R/02_Statistical_Analysis_merge_LandUses_Intensities.R")
+# Create the vectors that hold the land-uses that we want to keep with different use intensities 
+land_uses_separate <- c("Primary", "Cropland", "ISV", "Plantation forest")
+# Create a vector with the land-uses where we want to merge the light and intense use intensities
+land_uses_light_intense <- c("Cropland", "ISV", "Plantation forest")
 
 
-diversity_all <- diversity_all %>%
-  
-  mutate(
-    
-    # Create a new column for Use intensity to not overwrite the original
-    Use_intensity_1 = paste(Use_intensity),
-    
-    # Drop the Cannot decide intensity levels for the land-use categories that have 
-    # enough sites for the minimal, and light/intense
-    Use_intensity_1 = ifelse(Predominant_land_use_1 %in% LandUse_divide_r & Use_intensity_1 == "Cannot decide",
-                           NA,
-                           paste(Use_intensity_1)), 
-    
-    # Join the intensity levels of light and intense for cropland, plantation forest and ISV 
-    Use_intensity_1 = ifelse((Predominant_land_use_1 == "Plantation forest" |
-                              Predominant_land_use_1 == "ISV" |
-                              Predominant_land_use_1 == "Cropland") & 
-                             (Use_intensity_1 == "Intense use" | 
-                                Use_intensity_1 == "Light use"),
-                           str_replace_all(Use_intensity_1,
-                                           pattern = c("Intense use" = "Light-intense use", 
-                                                       "Light use" = "Light-intense use")), 
-                           paste(Use_intensity_1)),
-    
-    # Merge all the intensity levels for those land-use categories that don't have enough sites in each land-use type/intensity combination
-    Use_intensity_1 = ifelse(Predominant_land_use_1 %nin% LandUse_divide_r,
-                           str_replace_all(Use_intensity_1, pattern = c("Intense use" = "All", 
-                                                                      "Light use" = "All", 
-                                                                      "Minimal use" = "All", 
-                                                                      "Cannot decide" = "All")), 
-                           paste(Use_intensity_1)),
-    
-    
-    # Paste the land-use classes and intensity levels
-    LandUse = ifelse(Predominant_land_use_1 != "NA" & Use_intensity_1 != "NA",
-                     paste(Predominant_land_use_1, Use_intensity_1),
-                     NA),
-    
-    # set reference level
-    LandUse = factor(LandUse),
-    LandUse = relevel(LandUse, ref = "Primary Minimal use")
-  )
+diversity_all <- Merge_landUses_and_intensities(dataset = diversity_all, index = 1, 
+                                                land_uses_separate_intensities = land_uses_separate,
+                                                land_uses_merge_light_intense = land_uses_light_intense)
+
+# Check levels
+levels(diversity_all$LandUse.1)
 
 # ---10.3. Test for collinearity  ----------------------------------------------------------------------
 
@@ -332,16 +272,16 @@ diversity_all <- diversity_all %>%
 source("https://highstat.com/Books/Book2/HighstatLibV10.R")
 
 # Calculate the VIF
-corvif(diversity_all[ , c("LandUse", "Kingdom")])
+corvif(diversity_all[ , c("LandUse.1", "Kingdom")])
 
 # ---10.4. Complete cases --------------------------------------------------------------------------------
 
 # Create a table with complete cases
 diversity_all <- drop_na(diversity_all, 
-                              Species_richness, LandUse) %>% droplevels()
+                         Species_richness, LandUse.1) %>% droplevels()
 
 # Check number of sites
-table(diversity_all$LandUse, diversity_all$Kingdom)
+table(diversity_all$LandUse.1, diversity_all$Kingdom)
 
 # ---10.5. Choose between GLMM or LMM -----------------------------------------------------------------
 
@@ -358,14 +298,14 @@ hist(diversity_all$Species_richness)
 # tested in the second stage of modelling, and use it to compare different random-effects 
 # structures.
 
-m1 <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
+m1 <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
               (1|SS) + (1|SSB), data = diversity_all, family = poisson)
 
 # Warning message:
 #In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
 # Model failed to converge with max|grad| = 0.0399178 (tol = 0.002, component 1)
 
-m1 <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
+m1 <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
               (1|SS) + (1|SSB), data = diversity_all, family = poisson, 
             
             # I'm increasing the number of iterations as the model initially 
@@ -373,47 +313,25 @@ m1 <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
             control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
 
 
-m2 <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
+m2 <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
               (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_all, family = poisson, 
             control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
 
-m3 <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
-              (1+LandUse|SS) + (1|SSB), data = diversity_all, family = poisson, 
+m3 <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+              (1+LandUse.1|SS) + (1|SSB), data = diversity_all, family = poisson, 
             control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
 # Is singular
 
-m4 <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
-              (1+Predominant_land_use_1|SS) + (1|SSB), data = diversity_all, family = poisson, 
+m4 <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+              (1+Predominant_land_use.1|SS) + (1|SSB), data = diversity_all, family = poisson, 
             control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
 # Is singular
 
 # Compare the models that converged
 AIC(m1, m2)
 
-# ---10.6 Choose fixed effects structure  -----------------------------------------------------------------
 
-# See the significance of the terms in the model.
-Anova(m2)
-
-# The Land_use:kingdom interaction is significant, so I won’t remove this term 
-# from the model. 
-
-# ---10.7 Model estimates  -----------------------------------------------------------------
-summary(m2)
-
-# Export summary
-require(broom)
-out <- tidy(m4_2)
-
-# ---10.8 Plot residuals: ----------------------------------------------------------------
-
-simulationOutput <- simulateResiduals(fittedModel = m2)
-# Acces the qq plot
-plotQQunif(simulationOutput)
-# Plot the residuals against the predicted value 
-plotResiduals(simulationOutput)
-
-# ---10.9. Test for overdispersion: ----------------------------------------------------------------
+# ---10.7. Test for overdispersion: ----------------------------------------------------------------
 
 # I am going to use the Ben Bolker's function available at:
 # https://bbolker.github.io/mixedmodels-misc/glmmFAQ.html#overdispersion
@@ -433,13 +351,22 @@ overdisp_fun(m2)
 gof(m2)
 
 
-# ---10.10. Model with quasipoisson: -------------------------------------------------------------- 
-# I am going to add an observation-level random effects
+# ---10.8. Model with quasipoisson: -------------------------------------------------------------- 
+# I am going to add an observation-level random effects to account for the overdispersion of the data
 
-m2_q <- glmer(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
+m2_q <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
                 (1|SS) + (1|SSB) + (1|Source_ID) + (1|SSBS), data = diversity_all, family = poisson, 
               control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
 
+
+# Negative-Binomial for count data to assess the relative fit of both types of
+# model using AIC before proceeding (Zuur et al., 2009; Harrison et al., 2018).
+
+m2_nb <- glmer.nb(Species_richness ~ LandUse + Kingdom + LandUse:Kingdom +
+                    (1|SS) + (1|SSBS) + (1|Source_ID) + (1|SSBS), data = diversity_all, 
+                  verbose = TRUE)
+
+AIC(m2_q)
 # ---10.11 Plot residuals: ----------------------------------------------------------------
 
 simulationOutputq <- simulateResiduals(fittedModel = m2_q)
@@ -448,7 +375,130 @@ plotQQunif(simulationOutputq)
 # Plot the residuals against the predicted value 
 plotResiduals(simulationOutputq)
 
+# Test for overdispersion
 overdisp_fun(m2_q)
+
+
+#--------------------See what combination of land-use and land-use intensities is better -----------------------------
+# In order to know if it's better to use the same levels used in the abundance model I will fit the 
+# abundance and richness with the same land-use/intensities levels, and add their AIC and compare which option is better.
+
+
+# --- First option ---------------------------------------------------------------------------------------------
+# For the first attempt I will:
+
+# Primary can be divided into the three level intensities in all cases
+#	Cropland can be divided in minimal use and light/intense use (for the abundance endo plants have 19 sites in cropland )
+# ISV can be divided in minimal use and light/intense use 
+# MSV has to be merged
+# Pasture has to be merged 
+# Plantation forest can be divided in minimal use and light/intense 
+#	YSV has to be merged 
+
+# Richness
+
+# Model richness with those land-use classes
+m2_q <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+                (1|SS) + (1|SSB) + (1|Source_ID) + (1|SSBS), data = diversity_all, family = poisson, 
+              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+AIC(m2_q)
+#Check levels
+levels(diversity_all$LandUse.1)
+
+# Abundance
+
+# Import table that has the site metrics calculated for the abudance model (that means including animals and both types of plants)
+diversity_all_abundance <- readRDS( file = "./output/cleaned_data/02_Statistical_Analysis_Abundance_Site_metrics_combined_animals_endooPlants_notEndooPlants.rds")
+
+# Create the vectors that hold the land-uses that we want to keep with different use intensities 
+land_uses_separate <- c("Primary", "Cropland", "ISV", "Plantation forest")
+# Create a vector with the lad-uses that we want to merge
+land_uses_light_intense <- c("Cropland", "ISV", "Plantation forest")
+
+
+# This function creates new columns with the land-uses and use intensities that we want, then it then merges both columns 
+# into a LanUse column
+diversity_all_abundance <- Merge_landUses_and_intensities(diversity_all_abundance, 
+                                                          1,
+                                                          land_uses_separate, 
+                                                          land_uses_light_intense)
+# Check levels
+levels(diversity_all_abundance$LandUse.1)
+
+# Transform rescaled abundance
+diversity_all_abundance <- mutate(diversity_all_abundance, 
+                                  logAbundance = log(RescaledAbundance + 1),
+                                  sqrtAbundance = sqrt(RescaledAbundance)
+)
+
+
+# Model abundance with those land-use classes
+m2_a <- lmer(logAbundance ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+               (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_all_abundance)
+summary(m2_a)
+AIC(m2_a)
+
+# --- Second option ---------------------------------------------------------------------------------------------
+# For the second attempt I will:
+
+# Primary can be divided into the three level intensities in all cases
+#	Cropland has to be merged
+# ISV can be divided in minimal use and light/intense use 
+# MSV has to be merged
+# Pasture has to be merged 
+# Plantation forest can be divided in minimal use and light/intense 
+#	YSV has to be merged 
+
+# Richness
+
+# Create the vectors that hold the land-uses that we want to keep with different use intensities 
+land_uses_separate2 <- c("Primary","ISV", "Plantation forest")
+# Create a vector with the lad-uses that we want to merge
+land_uses_light_intense2 <- c("ISV", "Plantation forest")
+
+
+# This function creates new columns with the land-uses and use intensities that we want, then it then merges both columns 
+# into a LanUse column
+diversity_all <- Merge_landUses_and_intensities(diversity_all, 
+                                                2,
+                                                land_uses_separate2, 
+                                                land_uses_light_intense2)
+# Check levels
+levels(diversity_all$LandUse.2)
+
+# Model richness with those land-use classes
+m2_q_2 <- glmer(Species_richness ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
+                  (1|SS) + (1|SSB) + (1|Source_ID) + (1|SSBS), data = diversity_all, family = poisson, 
+                control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+summary(m2_q_2)
+AIC(m2_q_2)
+
+# Abundance
+
+# This function creates new columns with the land-uses and use intensities that we want, then it then merges both columns 
+# into a LanUse column
+diversity_all_abundance <- Merge_landUses_and_intensities(diversity_all_abundance, 
+                                                          2,
+                                                          land_uses_separate2, 
+                                                          land_uses_light_intense2)
+# Check levels
+levels(diversity_all_abundance$LandUse.2)
+
+
+# Model abundance with those land-use classes
+m2_a_2 <- lmer(logAbundance ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
+                 (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_all_abundance)
+summary(m2_a_2)
+AIC(m2_a_2)
+
+# Compare AICs
+
+# For the first combination
+first_AIC <- AIC(m2_q) + AIC(m2_a)
+# For the second combination
+second_AIC <- AIC(m2_q_2) + AIC(m2_a_2)
 
 # ---12.10. Plot results: ----------------------------------------------------------------
 
@@ -468,14 +518,14 @@ PlotErrBar_interactions_modi(model = m2_q, resp = "Abundance", Effect1 = "LandUs
 
 # Plot the x label
 text(x = c(0.8:10.8), y = -3, labels = c("Primary M",
-                                            "Cropland LI",
-                                            "Cropland M",
-                                            "ISV LI",
-                                            "ISV M",
-                                            "MSV A",
-                                            "Pasture A",
-                                            "Plantation LI",
-                                            "Plantation M",
-                                            "Primary I",
-                                            "Primary L",
-                                            "YSV A"), srt = 18, cex= 0.7)
+                                         "Cropland LI",
+                                         "Cropland M",
+                                         "ISV LI",
+                                         "ISV M",
+                                         "MSV A",
+                                         "Pasture A",
+                                         "Plantation LI",
+                                         "Plantation M",
+                                         "Primary I",
+                                         "Primary L",
+                                         "YSV A"), srt = 18, cex= 0.7)
