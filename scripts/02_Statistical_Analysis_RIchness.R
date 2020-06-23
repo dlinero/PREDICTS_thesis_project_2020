@@ -258,7 +258,8 @@ land_uses_light_intense <- c("Cropland", "ISV", "Plantation forest")
 
 diversity_all <- Merge_landUses_and_intensities(dataset = diversity_all, index = 1, 
                                                 land_uses_separate_intensities = land_uses_separate,
-                                                land_uses_merge_light_intense = land_uses_light_intense)
+                                                land_uses_merge_light_intense = land_uses_light_intense,
+                                                "Primary Minimal use")
 
 # Check levels
 levels(diversity_all$LandUse.1)
@@ -275,10 +276,6 @@ source("https://highstat.com/Books/Book2/HighstatLibV10.R")
 corvif(diversity_all[ , c("LandUse.1", "Kingdom")])
 
 # ---10.4. Complete cases --------------------------------------------------------------------------------
-
-# Create a table with complete cases
-diversity_all <- drop_na(diversity_all, 
-                         Species_richness, LandUse.1) %>% droplevels()
 
 # Check number of sites
 table(diversity_all$LandUse.1, diversity_all$Kingdom)
@@ -355,7 +352,7 @@ gof(m2)
 # I am going to add an observation-level random effects to account for the overdispersion of the data
 
 m2_q <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
-                (1|SS) + (1|SSB) + (1|Source_ID) + (1|SSBS), data = diversity_all, family = poisson, 
+                (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), data = diversity_all, family = poisson, 
               control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
 
 
@@ -379,7 +376,7 @@ plotResiduals(simulationOutputq)
 overdisp_fun(m2_q)
 
 
-#--------------------See what combination of land-use and land-use intensities is better -----------------------------
+#--------------------11. See what combination of land-use and land-use intensities is better -----------------------------
 # In order to know if it's better to use the same levels used in the abundance model I will fit the 
 # abundance and richness with the same land-use/intensities levels, and add their AIC and compare which option is better.
 
@@ -399,12 +396,27 @@ overdisp_fun(m2_q)
 
 # Model richness with those land-use classes
 m2_q <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
-                (1|SS) + (1|SSB) + (1|Source_ID) + (1|SSBS), data = diversity_all, family = poisson, 
+                (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), data = diversity_all, family = poisson, 
               control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
 
-AIC(m2_q)
 #Check levels
 levels(diversity_all$LandUse.1)
+
+summary(m2_q)
+# Export summary
+require(broom)
+outt <- tidy(m2_q)
+
+AIC(m2_q)
+
+simulationOutputq <- simulateResiduals(fittedModel = m2_q)
+# Acces the qq plot
+plotQQunif(simulationOutputq)
+# Plot the residuals against the predicted value 
+plotResiduals(simulationOutputq)
+
+# Test for overdispersion
+overdisp_fun(m2_q)
 
 # Abundance
 
@@ -422,9 +434,11 @@ land_uses_light_intense <- c("Cropland", "ISV", "Plantation forest")
 diversity_all_abundance <- Merge_landUses_and_intensities(diversity_all_abundance, 
                                                           1,
                                                           land_uses_separate, 
-                                                          land_uses_light_intense)
+                                                          land_uses_light_intense,
+                                                          "Primary Minimal use")
 # Check levels
 levels(diversity_all_abundance$LandUse.1)
+
 
 # Transform rescaled abundance
 diversity_all_abundance <- mutate(diversity_all_abundance, 
@@ -438,6 +452,12 @@ m2_a <- lmer(logAbundance ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
                (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_all_abundance)
 summary(m2_a)
 AIC(m2_a)
+
+simulationOutputa <- simulateResiduals(fittedModel = m2_a)
+# Acces the qq plot
+plotQQunif(simulationOutputa)
+# Plot the residuals against the predicted value 
+plotResiduals(simulationOutputa)
 
 # --- Second option ---------------------------------------------------------------------------------------------
 # For the second attempt I will:
@@ -463,61 +483,164 @@ land_uses_light_intense2 <- c("ISV", "Plantation forest")
 diversity_all <- Merge_landUses_and_intensities(diversity_all, 
                                                 2,
                                                 land_uses_separate2, 
-                                                land_uses_light_intense2)
+                                                land_uses_light_intense2,
+                                                "Primary Minimal use")
 # Check levels
 levels(diversity_all$LandUse.2)
 
 # Model richness with those land-use classes
-m2_q_2 <- glmer(Species_richness ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
-                  (1|SS) + (1|SSB) + (1|Source_ID) + (1|SSBS), data = diversity_all, family = poisson, 
-                control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+m2_q2 <- glmer(Species_richness ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
+                 (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), data = diversity_all, family = poisson, 
+               control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
 
-summary(m2_q_2)
-AIC(m2_q_2)
+summary(m2_q2)
+AIC(m2_q2)
 
+simulationOutputq_2 <- simulateResiduals(fittedModel = m2_q2)
+# Acces the qq plot
+plotQQunif(simulationOutputq_2)
+# Plot the residuals against the predicted value 
+plotResiduals(simulationOutputq_2)
+
+# Test for overdispersion
+overdisp_fun(m2_q2)
 # Abundance
 
-# This function creates new columns with the land-uses and use intensities that we want, then it then merges both columns 
-# into a LanUse column
+# This function creates new columns with the land-uses and use intensities that we want, then it merges both columns 
+# into a LandUse column
 diversity_all_abundance <- Merge_landUses_and_intensities(diversity_all_abundance, 
                                                           2,
                                                           land_uses_separate2, 
-                                                          land_uses_light_intense2)
+                                                          land_uses_light_intense2, 
+                                                          "Primary Minimal use")
 # Check levels
 levels(diversity_all_abundance$LandUse.2)
 
-
 # Model abundance with those land-use classes
-m2_a_2 <- lmer(logAbundance ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
+m2_a2 <- lmer(logAbundance ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
                  (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_all_abundance)
-summary(m2_a_2)
-AIC(m2_a_2)
+summary(m2_a2)
+AIC(m2_a2)
+
+simulationOutputa_2 <- simulateResiduals(fittedModel = m2_a_2)
+# Acces the qq plot
+plotQQunif(simulationOutputa_2)
+# Plot the residuals against the predicted value 
+plotResiduals(simulationOutputa_2)
 
 # Compare AICs
 
 # For the first combination
-first_AIC <- AIC(m2_q) + AIC(m2_a)
+AIC(m2_q)
+AIC(m2_a)
+AIC(m2_q) + AIC(m2_a)
 # For the second combination
-second_AIC <- AIC(m2_q_2) + AIC(m2_a_2)
+AIC(m2_q_2)
+AIC(m2_a_2)
+AIC(m2_q_2) + AIC(m2_a_2)
 
-# ---12.10. Plot results: ----------------------------------------------------------------
+# According to these results I should keep the land-use levels that the species richness models
+# allowed me to separate
+# That means my more complex model will be 
+m2_q <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+                (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), data = diversity_all, family = poisson, 
+              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+
+levels(diversity_all$LandUse.1)
+
+#--------------------12. Compare with model that has all the land-use intensities merged -----------------------------
+
+# Complete cases: get the rows that have information for the levels that we choose in the more complex model
+diversity_all <- drop_na(diversity_all, 
+                         Species_richness, LandUse.1) %>% droplevels()
+
+
+# Merge all the intensity levels for all land-use categories 
+
+# Create the vectors that hold the land-uses that we want to keep with different use intensities 
+land_uses_separate3 <- "NA"
+# Create a vector with the lad-uses that we want to merge
+land_uses_light_intense3 <- "NA"
+
+
+# This function creates new columns with the land-uses and use intensities that we want, then it then merges both columns 
+# into a LanUse column
+diversity_all <- Merge_landUses_and_intensities(diversity_all, 
+                                                3,
+                                                land_uses_separate3, 
+                                                land_uses_light_intense3,
+                                                "Primary All")
+# Check levels
+levels(diversity_all$LandUse.3)
+
+
+# Model richness with those land-use classes
+m2_q_3 <- glmer(Species_richness ~ LandUse.3 + Kingdom + LandUse.3:Kingdom +
+                  (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), data = diversity_all, family = poisson, 
+                control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+AIC(m2_q, m2_q_3)
+
+# Next we will check if we've lost a significant amount of explanatory power 
+# by removing this interaction. If we have, we want to keep the more complex
+# model. If we haven't lost a significant amount of explanatory power, then we
+# can keep the simpler model. 
+
+anova(m2_q, m2_q_3)
+
+#--------------------13. Compare with null model of plants -----------------------------
+
+# ---13.1. Create null model: -----------------------------------------------
+
+# For the null model I am going to replace the nePlantae for Plantae 
+diversity_all <- diversity_all %>%
+  
+  
+  mutate(
+    
+    # Create a new kingdom column as the copy of the kingdom column we used
+    # in the first model
+    Kingdom.1 = paste(Kingdom),
+    
+    # Replace nePlantae for Plantae
+    Kingdom.1 = recode_factor(Kingdom.1, "nePlantae" = "Plantae"), 
+    
+    # set reference level
+    Kingdom.1 = factor(Kingdom.1),
+    Kingdom.1 = relevel(Kingdom.1, ref = "Animalia"))
+
+# Check the levels
+levels(diversity_all$Kingdom.1)
+
+# ---13.2. Compare complex and null models: -----------------------------------------------
+
+m2_q_4 <- glmer(Species_richness ~ LandUse.1 + Kingdom.1 + LandUse.1:Kingdom.1 +
+                  (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), data = diversity_all, family = poisson, 
+                control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+summary(m2_q_4)
+
+anova(m2_q_4, m2_q, test = "F")
+
+
+# ---13.4 Plot results: ----------------------------------------------------------------
 
 # Read r code from a file which contains the function to make the plot
 source("./R/PlotErrBar_interactions.R")
 source("./R/PlotErrBar_interactions_modified.R")
 
 # Check the order of the plot labels
-PlotErrBar_interactions(model = m2_q, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
+PlotErrBar_interactions(model = m2_q, resp = "Abundance", Effect1 = "LandUse.1", Effect2 = "Kingdom",
                         ylims = c(-2.5,2.5), pointtype = c(16,17,18),blackwhite = FALSE)
 
 
 
 # Plot the differences between estimates 
-PlotErrBar_interactions_modi(model = m2_q, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
+PlotErrBar_interactions_modi(model = m2_q, resp = "Abundance", Effect1 = "LandUse.1", Effect2 = "Kingdom",
                              ylims = c(-3,2.5), pointtype = c(16,17, 18),blackwhite = FALSE)
 
 # Plot the x label
-text(x = c(0.8:10.8), y = -3, labels = c("Primary M",
+text(x = c(0.7:12), y = -3, labels = c("Primary M",
                                          "Cropland LI",
                                          "Cropland M",
                                          "ISV LI",
