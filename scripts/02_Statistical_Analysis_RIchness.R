@@ -4,7 +4,6 @@ rm(list = ls())
 # Load libraries
 library(yarg) # useful functions for dealing with PREDICTS data
 library(roquefort) # useful PREDICTS functions, particularly for plotting
-library(raster) # for dealing with spatial data
 library(dplyr) # for handy data manipulation functions
 library(tidyr) # ditto
 library(lme4) # for mixed effects models
@@ -37,52 +36,53 @@ diversityS <- readRDS(file = "./output/cleaned_data/01_Filter_data_frugi_endooPl
 
 # So, for now, I'm just going to remove studies that focused on a single species
 
-# Filter the data needed to run the model
-diversityS <- diversityS  %>% 
+# Create a dataset with the SS that assessed more than 1 species
+list <- diversityS  %>% 
   
   # By grouping by SS we are comparing sites with the same diversity metric type
   # either abundance or occurence 
-  group_by(SS) %>%
+  dplyr::group_by(SS) %>%
   
   # Create a new column to calculate the number of species sampled per study 
   # n_distinct = length(unique())
-  mutate(N_species_sampled = n_distinct(Taxon_name_entered)) %>%
+  dplyr::mutate(N_species_sampled = dplyr::n_distinct(Taxon_name_entered)) %>%
   
   # ungroup data frame  
-  ungroup() %>%
+  dplyr::ungroup() %>%
   
   # Filter the studies that sampled more than 1 species
-  filter(N_species_sampled > 1) %>%
+  dplyr::filter(N_species_sampled > 1) %>%
   
-  droplevels()
+  base::droplevels()
 
 # Minimum number of species sampled
-min(diversityS$N_species_sampled)
+min(list$N_species_sampled)
 
 # Maximum number of species sampled
-max(diversityS$N_species_sampled)
+max(list$N_species_sampled)
 
-# Remove N_species_sampled_column
-diversityS <- diversityS %>% select(-N_species_sampled)
+# Create a character vector of unique SS that assessed more than 1 species
+list <- as.character(unique(list$SS))
 
+diversityS <- diversityS %>% base::subset(SS %in% list) %>% droplevels()
 # ----3. Remove sites that will produce NaN values --------------------------------------------
 # Doing the abundance models, I identified some sites where (due to the filtering of specific species)
 # recorded only zero abundances. I am going to remove those sites as they will produce 
 # Non infinite values. 
 
-diversityS <- diversityS %>%  subset(SSBS %nin% c("MJ1_2009__Lehouck 2 Fururu 10", 
-                                                  "MJ1_2009__Lehouck 2 Fururu 11", 
-                                                  "MJ1_2009__Lehouck 2 Macha 12", 
-                                                  "MJ1_2009__Lehouck 2 Macha 13")) %>%
-  droplevels()
+diversityS <- diversityS %>%  base::subset(SSBS %nin% c("MJ1_2009__Lehouck 2 Fururu 10", 
+                                                        "MJ1_2009__Lehouck 2 Fururu 11", 
+                                                        "MJ1_2009__Lehouck 2 Macha 12", 
+                                                        "MJ1_2009__Lehouck 2 Macha 13")) %>%
+  base::droplevels()
 
 # ---- 4. Split datasets --------------------------------------------------------
 
 # I am going to separate the records that belong to plants not dispersed by animals
-diversityS_notEndo <- diversityS %>% subset(Kingdom == "nePlantae") %>% droplevels()
+diversityS_notEndo <- diversityS %>% base::subset(Kingdom == "nePlantae") %>% base::droplevels()
 
 # Get the table without plants dispersed by animals
-diversityS_frugi_endo <- diversityS %>% subset(Kingdom != "nePlantae") %>% droplevels()
+diversityS_frugi_endo <- diversityS %>% base::subset(Kingdom != "nePlantae") %>% base::droplevels()
 
 # ---- 5. Merge Sites for animals and Endooplants-------------------------------------------------------------
 
@@ -100,11 +100,11 @@ diversityS_notEndo <- yarg::MergeSites(diversityS_notEndo, silent = TRUE,
 # ----6. Rename Predominant habitat --------------------------------------------------
 
 # Rename the column predominant habitat, as the dataset is actually refering to land use
-diversityS_frugi_endo <-  rename(diversityS_frugi_endo,
-                                 Predominant_land_use = Predominant_habitat)
+diversityS_frugi_endo <-  dplyr::rename(diversityS_frugi_endo,
+                                        Predominant_land_use = Predominant_habitat)
 
-diversityS_notEndo <-  rename(diversityS_notEndo,
-                              Predominant_land_use = Predominant_habitat)
+diversityS_notEndo <-  dplyr::rename(diversityS_notEndo,
+                                     Predominant_land_use = Predominant_habitat)
 
 
 # ----7.  Calculate diversity metrics -----------------------------------------------
@@ -113,7 +113,7 @@ diversityS_notEndo <-  rename(diversityS_notEndo,
 diversity1S_frugi_endo <- diversityS_frugi_endo %>%
   
   # add Diversity_metric_is_valid column
-  mutate(Diversity_metric_is_valid = TRUE) %>%
+  dplyr::mutate(Diversity_metric_is_valid = TRUE) %>%
   
   # The extra.cols parameter is used for columns that we want to 
   # transferred to the final site-level data frame and that the function 
@@ -124,7 +124,7 @@ diversity1S_frugi_endo <- diversityS_frugi_endo %>%
 diversity1S_notendo <- diversityS_notEndo %>%
   
   # add Diversity_metric_is_valid column
-  mutate(Diversity_metric_is_valid = TRUE) %>%
+  dplyr::mutate(Diversity_metric_is_valid = TRUE) %>%
   
   # The extra.cols parameter is used for columns that we want to 
   # transferred to the final site-level data frame and that the function 
@@ -138,74 +138,74 @@ diversity1S_notendo <- diversityS_notEndo %>%
 diversityS_frugi_endo %>% 
   
   # subset the table with all of the species records
-  subset(SSS == "BS1_2010__Page 1 1") %>%
+  base::subset(SSS == "BS1_2010__Page 1 1") %>%
   
   # Select species that have an abundance greater than zero
-  filter(Measurement > 0) %>%
+  dplyr::filter(Measurement > 0) %>%
   
   # Create a column with the number of species present
-  mutate(Species_richness = n_distinct(Taxon_name_entered)) %>%
+  dplyr::mutate(Species_richness = n_distinct(Taxon_name_entered)) %>%
   
-  select(SSS, Taxon_name_entered, Measurement, Species_richness) 
+  dplyr::select(SSS, Taxon_name_entered, Measurement, Species_richness) 
 
 # Compare with the SiteMetrics result
-diversity1S_frugi_endo %>% subset(SSS == "BS1_2010__Page 1 1") %>% select(SSS, Species_richness)
+diversity1S_frugi_endo %>% base::subset(SSS == "BS1_2010__Page 1 1") %>% dplyr::select(SSS, Species_richness)
 
 # Check the results for studies that assessed abundance
 diversityS_notEndo %>% 
   
   # subset the table with all of the species records
-  subset(SSS == "CM1_2007__MarinSpiotta 1 1") %>%
+  base::subset(SSS == "CM1_2007__MarinSpiotta 1 1") %>%
   
   # Select species that have an abundance greater than zero
-  filter(Measurement > 0) %>%
+  dplyr::filter(Measurement > 0) %>%
   
   # Create a column with the number of species present
-  mutate(Species_richness = n_distinct(Taxon_name_entered)) %>%
+  dplyr::mutate(Species_richness = n_distinct(Taxon_name_entered)) %>%
   
-  select(SSS, Taxon_name_entered, Measurement, Species_richness) 
+  dplyr::select(SSS, Taxon_name_entered, Measurement, Species_richness) 
 
 # Compare with the SiteMetrics result
-diversity1S_notendo %>% subset(SSS == "CM1_2007__MarinSpiotta 1 1") %>% select(SSS, Species_richness)
+diversity1S_notendo %>% base::subset(SSS == "CM1_2007__MarinSpiotta 1 1") %>% dplyr::select(SSS, Species_richness)
 
 # Check the results with studies that occurrence
 diversityS_frugi_endo %>% 
   
   # subset the table with all of the species records
-  subset(SSS == "DL1_2011__Latta 2 1") %>%
+  base::subset(SSS == "DL1_2011__Latta 2 1") %>%
   
   # Select species that are present in the site 
-  filter(Measurement == 1) %>% 
+  dplyr::filter(Measurement == 1) %>% 
   
   # Create a column with the number of species present
-  mutate(Species_richness = n_distinct(Taxon_name_entered)) %>%
+  dplyr::mutate(Species_richness = n_distinct(Taxon_name_entered)) %>%
   
-  select(SSS, Taxon_name_entered, Measurement, Species_richness) 
+  dplyr::select(SSS, Taxon_name_entered, Measurement, Species_richness) 
 
 # Compare with the SiteMetrics result
-diversity1S_frugi_endo %>% subset(SSS == "DL1_2011__Latta 2 1") %>% select(SSS, Species_richness)
+diversity1S_frugi_endo %>% base::subset(SSS == "DL1_2011__Latta 2 1") %>% dplyr::select(SSS, Species_richness)
 
 # Check the results with studies that occurrence
 diversityS_notEndo %>% 
   
   # subset the table with all of the species records
-  subset(SSS == "CM2_2012__Cicuzza 1 1") %>%
+  base::subset(SSS == "CM2_2012__Cicuzza 1 1") %>%
   
   # Select species that are present in the site 
-  filter(Measurement == 1) %>% 
+  dplyr::filter(Measurement == 1) %>% 
   
   # Create a column with the number of species present
-  mutate(Species_richness = n_distinct(Taxon_name_entered)) %>%
+  dplyr::mutate(Species_richness = n_distinct(Taxon_name_entered)) %>%
   
-  select(SSS, Taxon_name_entered, Measurement, Species_richness) 
+  dplyr::select(SSS, Taxon_name_entered, Measurement, Species_richness) 
 
 # Compare with the SiteMetrics result
-diversity1S_notendo %>% subset(SSS == "CM2_2012__Cicuzza 1 1") %>% select(SSS, Species_richness)
+diversity1S_notendo %>% base::subset(SSS == "CM2_2012__Cicuzza 1 1") %>% dplyr::select(SSS, Species_richness)
 
 # ---9. Merge site metrics -------------------------------------------------------------------
 # Merge the site metrics for all organisms
 
-diversity_all <- rbind.data.frame(diversity1S_frugi_endo, diversity1S_notendo)
+diversity_all <- base::rbind.data.frame(diversity1S_frugi_endo, diversity1S_notendo)
 
 # Export table
 saveRDS(diversity_all, file = "./output/cleaned_data/02_Statistical_Analysis_Richness_Site_metrics_animals_endooPlants_notendooPlants.rds")
@@ -394,19 +394,34 @@ overdisp_fun(m2_q)
 
 # Richness
 
-# Model richness with those land-use classes
-m2_q <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
-                (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), data = diversity_all, family = poisson, 
-              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+# Call the function that merges lan-uses and intensities
+source("./R/02_Statistical_Analysis_merge_LandUses_Intensities.R")
+# Create the vectors that hold the land-uses that we want to keep with different use intensities 
+land_uses_separate <- c("Primary", "Cropland", "ISV", "Plantation forest")
+# Create a vector with the land-uses where we want to merge the light and intense use intensities
+land_uses_light_intense <- c("Cropland", "ISV", "Plantation forest")
+
+
+diversity_all <- Merge_landUses_and_intensities(dataset = diversity_all, index = 1, 
+                                                land_uses_separate_intensities = land_uses_separate,
+                                                land_uses_merge_light_intense = land_uses_light_intense,
+                                                "Primary Minimal use")
+
+# Get complete cases, in order to compare models that use the same rows
+diversity_richness <- drop_na(diversity_all, Species_richness, LandUse.1)  %>% droplevels()
 
 #Check levels
-levels(diversity_all$LandUse.1)
+levels(diversity_richness$LandUse.1)
+
+
+# Model richness with those land-use classes
+m2_q <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+                (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), data = diversity_richness, family = poisson, 
+              control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+
 
 summary(m2_q)
-# Export summary
-require(broom)
-outt <- tidy(m2_q)
-
 AIC(m2_q)
 
 simulationOutputq <- simulateResiduals(fittedModel = m2_q)
@@ -423,11 +438,6 @@ overdisp_fun(m2_q)
 # Import table that has the site metrics calculated for the abudance model (that means including animals and both types of plants)
 diversity_all_abundance <- readRDS( file = "./output/cleaned_data/02_Statistical_Analysis_Abundance_Site_metrics_combined_animals_endooPlants_notEndooPlants.rds")
 
-# Create the vectors that hold the land-uses that we want to keep with different use intensities 
-land_uses_separate <- c("Primary", "Cropland", "ISV", "Plantation forest")
-# Create a vector with the lad-uses that we want to merge
-land_uses_light_intense <- c("Cropland", "ISV", "Plantation forest")
-
 
 # This function creates new columns with the land-uses and use intensities that we want, then it then merges both columns 
 # into a LanUse column
@@ -436,20 +446,22 @@ diversity_all_abundance <- Merge_landUses_and_intensities(diversity_all_abundanc
                                                           land_uses_separate, 
                                                           land_uses_light_intense,
                                                           "Primary Minimal use")
-# Check levels
-levels(diversity_all_abundance$LandUse.1)
 
+# Get complete cases, in order to compare models that use the same rows
+diversity_abundance <- drop_na(diversity_all_abundance, RescaledAbundance, LandUse.1)  %>% droplevels()
+
+# Check levels
+levels(diversity_abundance$LandUse.1)
 
 # Transform rescaled abundance
-diversity_all_abundance <- mutate(diversity_all_abundance, 
-                                  logAbundance = log(RescaledAbundance + 1),
-                                  sqrtAbundance = sqrt(RescaledAbundance)
+diversity_abundance <- mutate(diversity_abundance, 
+                              logAbundance = log(RescaledAbundance + 1)
 )
 
 
 # Model abundance with those land-use classes
 m2_a <- lmer(logAbundance ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
-               (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_all_abundance)
+               (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_abundance)
 summary(m2_a)
 AIC(m2_a)
 
@@ -472,6 +484,9 @@ plotResiduals(simulationOutputa)
 
 # Richness
 
+# The only difference between both models is that we are going to merge the intensities for cropland
+# in the second option
+
 # Create the vectors that hold the land-uses that we want to keep with different use intensities 
 land_uses_separate2 <- c("Primary","ISV", "Plantation forest")
 # Create a vector with the lad-uses that we want to merge
@@ -480,17 +495,17 @@ land_uses_light_intense2 <- c("ISV", "Plantation forest")
 
 # This function creates new columns with the land-uses and use intensities that we want, then it then merges both columns 
 # into a LanUse column
-diversity_all <- Merge_landUses_and_intensities(diversity_all, 
-                                                2,
-                                                land_uses_separate2, 
-                                                land_uses_light_intense2,
-                                                "Primary Minimal use")
+diversity_richness <- Merge_landUses_and_intensities(diversity_richness, 
+                                                     2,
+                                                     land_uses_separate2, 
+                                                     land_uses_light_intense2,
+                                                     "Primary Minimal use")
 # Check levels
-levels(diversity_all$LandUse.2)
+levels(diversity_richness$LandUse.2)
 
 # Model richness with those land-use classes
 m2_q2 <- glmer(Species_richness ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
-                 (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), data = diversity_all, family = poisson, 
+                 (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), data = diversity_richness, family = poisson, 
                control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
 
 summary(m2_q2)
@@ -504,23 +519,25 @@ plotResiduals(simulationOutputq_2)
 
 # Test for overdispersion
 overdisp_fun(m2_q2)
+
+
 # Abundance
 
 # This function creates new columns with the land-uses and use intensities that we want, then it merges both columns 
 # into a LandUse column
-diversity_all_abundance <- Merge_landUses_and_intensities(diversity_all_abundance, 
-                                                          2,
-                                                          land_uses_separate2, 
-                                                          land_uses_light_intense2, 
-                                                          "Primary Minimal use")
+diversity_abundance <- Merge_landUses_and_intensities(diversity_abundance, 
+                                                      2,
+                                                      land_uses_separate2, 
+                                                      land_uses_light_intense2, 
+                                                      "Primary Minimal use")
 # Check levels
-levels(diversity_all_abundance$LandUse.2)
+levels(diversity_abundance$LandUse.2)
 
 # Model abundance with those land-use classes
-m2_a2 <- lmer(logAbundance ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
-                 (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_all_abundance)
-summary(m2_a2)
-AIC(m2_a2)
+m2_a_2 <- lmer(logAbundance ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
+                 (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_abundance)
+summary(m2_a_2)
+AIC(m2_a_2)
 
 simulationOutputa_2 <- simulateResiduals(fittedModel = m2_a_2)
 # Acces the qq plot
@@ -535,9 +552,9 @@ AIC(m2_q)
 AIC(m2_a)
 AIC(m2_q) + AIC(m2_a)
 # For the second combination
-AIC(m2_q_2)
+AIC(m2_q2)
 AIC(m2_a_2)
-AIC(m2_q_2) + AIC(m2_a_2)
+AIC(m2_q2) + AIC(m2_a_2)
 
 # According to these results I should keep the land-use levels that the species richness models
 # allowed me to separate
@@ -549,7 +566,7 @@ m2_q <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
 
 levels(diversity_all$LandUse.1)
 
-#--------------------12. Compare with model that has all the land-use intensities merged -----------------------------
+#--------------------12. Compare with model that has all the land-use intensities merge -----------------------------
 
 # Complete cases: get the rows that have information for the levels that we choose in the more complex model
 diversity_all <- drop_na(diversity_all, 
@@ -636,11 +653,11 @@ PlotErrBar_interactions(model = m2_q, resp = "Abundance", Effect1 = "LandUse.1",
 
 
 # Plot the differences between estimates 
-PlotErrBar_interactions_modi(model = m2_q, resp = "Abundance", Effect1 = "LandUse.1", Effect2 = "Kingdom",
+PlotErrBar_interactions_modi(model = m2_q, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
                              ylims = c(-3,2.5), pointtype = c(16,17, 18),blackwhite = FALSE)
 
 # Plot the x label
-text(x = c(0.7:12), y = -3, labels = c("Primary M",
+text(x = c(0.8:10.8), y = -3, labels = c("Primary M",
                                          "Cropland LI",
                                          "Cropland M",
                                          "ISV LI",
@@ -652,3 +669,5 @@ text(x = c(0.7:12), y = -3, labels = c("Primary M",
                                          "Primary I",
                                          "Primary L",
                                          "YSV A"), srt = 18, cex= 0.7)
+
+
