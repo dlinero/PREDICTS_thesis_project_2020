@@ -1,0 +1,376 @@
+---
+title: "Statistical_Analysis_Simpson"
+author: "Daniela Linero"
+date: "1/7/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_chunk$set(cache = TRUE)
+knitr::opts_chunk$set(error = TRUE)
+library(knitr)
+library(kableExtra)
+```
+
+
+```{r load libraries, include=FALSE, warning=FALSE}
+library(yarg) # useful functions for dealing with PREDICTS data
+library(roquefort) # useful PREDICTS functions, particularly for plotting
+library(dplyr) # for handy data manipulation functions
+library(tidyr) # ditto
+library(lme4) # for mixed effects models
+library(car) # for getting anova tables with significance values
+library(DHARMa) # for model criticism plots
+library(MuMIn) # for checking explanatory power of mixed effects models
+library(stringr) # to replace text
+```
+
+*1. Load data*
+
+Load the table that contains the abudance and occurrence measures for frugivores along with the plants dispersed and not dispersed by animals. 
+
+```{r}
+# Import table
+diversityS <- readRDS(file = "./output/cleaned_data/01_Filter_data_frugi_endooPlants_notEndooPlants_records.rds")
+
+```
+
+*2. Correct abundance measures using Sampling effort*
+
+```{r}
+diversityS <- yarg::CorrectSamplingEffort(diversityS) 
+```
+
+*3. Select studies that assesed more than one species*
+
+```{r}
+# Create a dataset with the SS that assessed more than 1 species
+list <- diversityS  %>% 
+  
+  # By grouping by SS we are comparing sites with the same diversity metric
+  # type either abundance or occurence 
+  dplyr::group_by(SS) %>%
+  
+  # Create a new column to calculate the number of species sampled per study 
+  # n_distinct = length(unique())
+  dplyr::mutate(N_species_sampled = dplyr::n_distinct(Taxon_name_entered)) %>%
+  
+  # ungroup data frame  
+  dplyr::ungroup() %>%
+  
+  # Filter the studies that sampled more than 1 species
+  dplyr::filter(N_species_sampled > 1) %>%
+  
+  base::droplevels()
+```
+
+
+```{r}
+# Create a character vector of unique SS that assessed more than 1 species
+list <- as.character(unique(list$SS))
+
+diversityS <- diversityS %>%
+  
+  # Filter the studies present in the list
+  base::subset(SS %in% list) %>% 
+  
+  droplevels()
+```
+
+*4. Remove sites that will produce NaN values*
+
+```{r}
+diversityS <- diversityS %>% 
+  
+  # Remove the sites that have a maximum abundance of 0
+  base::subset(SSBS %nin% c("MJ1_2009__Lehouck 2 Fururu 10", 
+                             "MJ1_2009__Lehouck 2 Fururu 11", 
+                               "MJ1_2009__Lehouck 2 Macha 12", 
+                                 "MJ1_2009__Lehouck 2 Macha 13")) %>%
+  base::droplevels()
+
+```
+
+*5. Split dataset*
+
+I will separate the measures of plants not dispersed by animals, in order to avoid
+that they are merged together with plants dispersed by animals with the MergeSites function
+
+```{r}
+# I am going to separate the records that belong to plants not dispersed
+# by animals
+diversityS_notEndo <- diversityS %>%
+  
+  base::subset(Kingdom == "nePlantae") %>%
+  
+  base::droplevels()
+
+# Get the table without plants dispersed by animals
+diversityS_frugi_endo <- diversityS %>%
+  
+  base::subset(Kingdom != "nePlantae") %>%
+  
+  base::droplevels()
+
+```
+
+*6. Merge Sites*
+
+```{r}
+diversityS_frugi_endo <- yarg::MergeSites(diversityS_frugi_endo, 
+                                          silent = TRUE, 
+                                          merge.extra = "Wilderness_area")
+
+diversityS_notEndo <- yarg::MergeSites(diversityS_notEndo, 
+                                       silent = TRUE, 
+                                       merge.extra = "Wilderness_area")
+
+```
+
+*7. Rename Predominant Habitat*
+
+```{r}
+# Rename the column predominant habitat, as the dataset is actually 
+# refering to land use
+diversityS_frugi_endo <-  dplyr::rename(diversityS_frugi_endo,
+                        Predominant_land_use = Predominant_habitat)
+
+diversityS_notEndo <-  dplyr::rename(diversityS_notEndo,
+                    Predominant_land_use = Predominant_habitat)
+```
+
+*8. Calculate Diversity Metrics*
+```{r, eval=FALSE}
+# Calculate diversity metrics for animals and endoozoocoric plants
+diversity1S_frugi_endo <- diversityS_frugi_endo %>%
+  
+  # add Diversity_metric_is_valid column
+  dplyr::mutate(Diversity_metric_is_valid = TRUE) %>%
+  
+  # The extra.cols parameter is used for columns that we want to 
+  # transferred to the final site-level data frame and that the function 
+  # does not add  automatically
+  yarg::SiteMetrics(extra.cols = c("SSB", "SSBS", "Predominant_land_use", "Kingdom")) 
+
+# Calculate diversity metrics for plants not dispersed by animals
+diversity1S_notendo <- diversityS_notEndo %>%
+  
+  # add Diversity_metric_is_valid column
+  dplyr::mutate(Diversity_metric_is_valid = TRUE) %>%
+  
+  # The extra.cols parameter is used for columns that we want to 
+  # transferred to the final site-level data frame and that the function 
+  # does not add  automatically
+  yarg::SiteMetrics(extra.cols = c("SSB", "SSBS", "Predominant_land_use", "Kingdom")) 
+
+# Merge the site metrics for all organisms
+diversity_all <- base::rbind.data.frame(diversity1S_frugi_endo,
+                                        diversity1S_notendo)
+
+```
+
+```{r, include=FALSE}
+# Import table
+diversity_all <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Simpson_Site_metrics_animals_endooPlants_notendooPlants.rds")
+
+```
+
+*9. Check results*
+
+```{r}
+# Merge the measures of frugivores, endoplants and not endoplants
+diversityS_combined <- rbind.data.frame(diversityS_frugi_endo, 
+                                        diversityS_notEndo)
+
+diversityS_combined  %>% 
+  
+  # subset one site to check
+  base::subset(SSS == "DG1_2013__Zou 1 1") %>% base::droplevels() %>%
+  
+  # Calculate each species abundance over total abundance at the site
+  dplyr::mutate(Proportion = Measurement/sum(Measurement)) %>%
+  
+  # Sum the proportions and squared them
+  dplyr::mutate(Simpson_D = sum(Proportion^2)) %>%
+  
+  # Calculate 1/D
+  dplyr::mutate(one_over_D = 1/Simpson_D) %>% 
+  
+   # Select only columns we're interested in
+  dplyr::select(SSS, Best_guess_binomial, Measurement, one_over_D)
+```
+
+
+```{r}
+# Compare with the SiteMetrics result
+diversity_all %>% base::subset(SSS == "DG1_2013__Zou 1 1") %>%
+  dplyr::select(SSS, Simpson_diversity)
+
+
+```
+
+*10. Check the abundance measures units*
+
+I am going to check that the measures used that weren’t number of individuals or ind/km2, were reasonably concordant to an abundance measure of each species. 
+
+
+```{r}
+# Get the unique diversity metric type and unit for each study
+Diversity_metric_unit <- diversityS_combined %>% 
+
+  # Get only one row for each study
+  dplyr::distinct(SS, .keep_all = TRUE) %>%
+  
+  # Select the columns we're interested in
+  dplyr::select(Source_ID, SS,  
+                Diversity_metric_unit, Kingdom, 
+                Study_common_taxon) %>%
+
+  # Filter the studies that need to be checked
+  base::subset(Diversity_metric_unit %nin% c("individuals",
+                                             "stems/hectare", 
+                                             "presence/absence", 
+                                             "effort-corrected individuals",
+                                             "individuals/km2", 
+                                             "groups/colonies per km", 
+                                             "number of groups",
+                                             "individuals/km")) %>%
+  droplevels()
+
+
+kable(Diversity_metric_unit, format="latex", booktabs=TRUE) %>% 
+  kable_styling(latex_options="scale_down")
+
+```
+
+*11. Models*
+
+Count number of sites for the SiteMetrics table in order to know the sample size for each land-use type and intensity.
+
+
+```{r}
+# Remove sites that don't have a simpson diversity value or land-use type
+diversity_simpson <- drop_na(diversity_all, 
+                             Simpson_diversity, 
+                             Predominant_land_use) %>%
+  droplevels()
+
+# Number of sites
+table(diversity_simpson$Predominant_land_use,
+                 diversity_simpson$Use_intensity,
+                 diversity_simpson$Kingdom)
+```
+
+
+According to the number of sites, I am going to try this initial combination:
+
+* Primary can be divided into the two level intensities in all cases
+*	Cropland has to be merged
+* ISV can be divided in minimal use and light/intense use 
+* MSV has to be merged
+* Pasture has to be merged 
+* Plantation forest can be divided in minimal use and light/intense 
+*	YSV has to be merged 
+
+
+```{r}
+
+# Call the function that merges lan-uses and intensities
+source("./R/02_Statistical_Analysis_merge_LandUses_Intensities.R")
+
+# Create the vectors that hold the land-uses that we want to
+# keep with different use intensities 
+land_uses_separate_1 <- c("Primary", "ISV", "Plantation forest")
+
+# Create a vector with the land-uses where we want to merge the 
+#light and intense use intensities
+land_uses_light_intense_1 <- c("Primary", "ISV", "Plantation forest")
+
+# Merge landuse intensities
+diversity_simpson <- Merge_landUses_and_intensities(dataset = diversity_simpson,
+                                                    index = 1, 
+                       land_uses_separate_intensities = land_uses_separate_1,
+                       land_uses_merge_light_intense = land_uses_light_intense_1,
+                                                    "Primary Minimal use")
+
+# Check number of sites
+addmargins(table(diversity_simpson$LandUse.1, diversity_simpson$Kingdom), 2)
+```
+
+Test for collinearity
+
+```{r}
+
+# Get the function
+source("https://highstat.com/Books/Book2/HighstatLibV10.R")
+
+# Calculate the VIF
+corvif(diversity_simpson[ , c("LandUse.1", "Kingdom")])
+
+```
+
+Choose random effects structure
+
+```{r}
+# Simplest random effects structure 
+m1 <- lmer(Simpson_diversity ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+             (1|SS) + (1|SSB), data = diversity_simpson) 
+```
+
+
+```{r}
+plot(m1)
+hist(diversity_simpson$Simpson_diversity)
+# The simplest model does not converge
+
+```
+
+*12. Second attempt*
+
+```{r}
+# I am going to merge all categories
+
+# Create the vectors that hold the land-uses that we want to keep
+#with different use intensities 
+land_uses_separate_2 <- "NA"
+# Create a vector with the land-uses where we want to merge the
+# light and intense use intensities
+land_uses_light_intense_2 <- "NA"
+
+diversity_simpson <- Merge_landUses_and_intensities(dataset = diversity_simpson,
+                                                    index = 2, 
+               land_uses_separate_intensities = land_uses_separate_2,
+               land_uses_merge_light_intense = land_uses_light_intense_2,
+                                                    "Primary All")
+
+addmargins(table(diversity_simpson$LandUse.2, diversity_simpson$Kingdom), 2)
+```
+
+```{r}
+m2 <- lmer(Simpson_diversity ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
+             (1|SS) + (1|SSB), data = diversity_simpson) 
+```
+
+```{r}
+plot(m2)
+```
+
+I am going to try to remove the MSV, since it only has 20 sites in total for nePlants
+
+```{r}
+
+# Remove MSV records
+diversity_simpson1 <- diversity_simpson %>% 
+  subset(LandUse.2 != "MSV All") %>% droplevels()
+
+# Run the model
+m3 <- lmer(Simpson_diversity ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
+             (1|SS) + (1|SSB), data = diversity_simpson1) #Is Singular
+
+```
+```{r}
+plot(m3)
+```
+
