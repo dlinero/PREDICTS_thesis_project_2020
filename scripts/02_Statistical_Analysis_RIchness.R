@@ -12,7 +12,7 @@ library(DHARMa) # for model criticism plots
 library(MuMIn) # for checking explanatory power of mixed effects models
 library(stringr) # to replace text
 library(aods3) # to check for overdispersion
-library(lmerTest) # to get p-values for estimates in LMMs
+
 
 
 # --- Description -----------------------------------------------------------------
@@ -64,6 +64,7 @@ max(list$N_species_sampled)
 # Create a character vector of unique SS that assessed more than 1 species
 list <- as.character(unique(list$SS))
 
+# Filter the dataset
 diversityS <- diversityS %>% base::subset(SS %in% list) %>% droplevels()
 # ----3. Remove sites that will produce NaN values --------------------------------------------
 # Doing the abundance models, I identified some sites where (due to the filtering of specific species)
