@@ -1196,3 +1196,183 @@ text(x = c(0.8:10.8), y = -0.18, labels = c("Primary minimal use",
                                             "Primary light use",
                                             "YSV all uses"), srt = 18, cex= 0.9)
 
+# ---------------------RESULTS WITH THE BEST COMBINATION -------------------------------------------
+
+# 13.1. Load table -------------------------------------------------------------------------------------
+
+# Load abundance data 
+diversity_all_abundance <- readRDS(file = "./output/cleaned_data/02_Statistical_Analysis_Abundance_Site_metrics_combined_animals_endooPlants_notEndooPlants.rds")
+
+# Transform rescaled abundance
+diversity_all_abundance <- mutate(diversity_all_abundance, 
+                                  logAbundance = log(RescaledAbundance + 1)
+)
+
+# 13.2. Merge land-use intensities ------------------------------------------------------------------------
+
+# Call the function that merges lan-uses and intensities
+source("./R/02_Statistical_Analysis_merge_LandUses_Intensities.R")
+
+# Create the vectors that hold the land-uses that we want to keep with 
+# different use intensities 
+land_uses_separate_final <- c("Primary","Cropland", "ISV", "Plantation forest")
+# Create a vector with the land-uses where we want to merge the light 
+# and intense use intensities
+land_uses_light_intense_final <- c("Primary", "Cropland", "ISV", "Plantation forest")
+
+
+# Create the levels of the best combination for the tables that have all the records 
+diversity_all_abundance <- Merge_landUses_and_intensities(dataset = diversity_all_abundance,
+                                                index = 0, 
+                                                land_uses_separate_intensities = land_uses_separate_final,
+                                                land_uses_merge_light_intense = land_uses_light_intense_final,
+                                                "Primary Minimal use")
+
+# ---13.3 Test for collinearity  ----------------------------------------------------------------------
+
+# Since I'm going to explore the collinearity between categorical variables, I'm going to use 
+# the Generalized variance Inflation Factors function provided by Zuur et al., (2009)
+
+# Get the function
+source("https://highstat.com/Books/Book2/HighstatLibV10.R")
+
+# Calculate the VIF
+corvif(diversity_all_abundance[ , c("LandUse.0", "Kingdom")])
+
+# ---13.4. Complete cases --------------------------------------------------------------------------------
+
+# Create a table with complete cases
+diversity_all_abundance <- drop_na(diversity_all_abundance, 
+                         RescaledAbundance, LandUse.0) %>% droplevels()
+
+# Check number of sites
+table(diversity_all_abundance$LandUse.0, diversity_all_abundance$Kingdom)
+
+# ---13.5. Model with log: -------------------------------------------------------------- 
+
+# Abundance data usually has a nonnormal error distribution because it has a positive mean-variance
+# relationship and zero-inflation (Purvis et al., 2018). Given that some abudance measures are not integers
+# (some are relative abudance or densities), I am not going to model the abudance with a Poisson distribution,
+# but I’m going to transform it in order to meet the assumptions of linear mixed models.
+
+m1_final <- lmer(logAbundance ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
+                                   (1|SS) + (1|SSB) + (1|Source_ID),
+                 data = diversity_all_abundance)
+
+# test significance of fixed effects 
+Anova(m1_final)
+
+# Export estimates
+require(broom)
+out <- tidy(m1_final)
+
+# ---13.6 Plot residuals: ----------------------------------------------------------------
+
+plot(m1_final)
+
+#----13.7 Compare with model that has all the land-use intensities merge -----------------------------
+
+# Merge all the intensity levels for all land-use categories 
+
+# Create the vectors that hold the land-uses that we want to keep with different use intensities 
+land_uses_separate_null1 <- "NA"
+# Create a vector with the lad-uses that we want to merge
+land_uses_light_intense_null1 <- "NA"
+
+
+# This function creates new columns with the land-uses and use intensities that we want, then it then merges both columns 
+# into a LanUse column
+diversity_all_abundance <- Merge_landUses_and_intensities(diversity_all_abundance, 
+                                                1,
+                                                land_uses_separate_null1, 
+                                                land_uses_light_intense_null1,
+                                                "Primary All")
+# Check levels
+levels(diversity_all_abundance$LandUse.1)
+
+
+# Model richness with those land-use classes
+m2_final <- lmer(logAbundance ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+                   (1|Source_ID) + (1|SS) + (1|SSB),
+                 data = diversity_all_abundance)
+
+# Check they have the same sample size with the complex model
+summary(m2_final)
+
+# Compare AICs
+AIC(m1_final, m2_final)
+
+# Next we will check if we've lost a significant amount of explanatory power 
+# by removing this interaction. If we have, we want to keep the more complex
+# model. If we haven't lost a significant amount of explanatory power, then we
+# can keep the simpler model. 
+
+anova(m1_final, m2_final)
+
+#--13.8. Compare with null model of plants -----------------------------------------------
+
+# For the null model I am going to replace the nePlantae for Plantae 
+diversity_all_abundance <- diversity_all_abundance %>%
+  
+  mutate(
+    
+    # Create a new kingdom column as the copy of the kingdom column we used
+    # in the first model
+    Kingdom.1 = paste(Kingdom),
+    
+    # Replace nePlantae for Plantae
+    Kingdom.1 = recode_factor(Kingdom.1, "nePlantae" = "Plantae"), 
+    
+    # set reference level
+    Kingdom.1 = factor(Kingdom.1),
+    Kingdom.1 = relevel(Kingdom.1, ref = "Animalia"))
+
+# Check the levels
+levels(diversity_all_abundance$Kingdom.1)
+
+m3_final <- lmer(logAbundance ~ LandUse.0 + Kingdom.1 + LandUse.0:Kingdom.1 +
+                   (1|Source_ID) + (1|SS) + (1|SSB),
+                 data = diversity_all_abundance)
+
+# Check they have the same sample size with the complex model
+summary(m3_final)
+
+# check if we've lost a significant amount of explanatory power 
+anova(m1_final, m3_final, test = "F")
+
+
+# ---13.9. Plot results: ----------------------------------------------------------------
+
+# Read r code from a file which contains the function to make the plot
+source("./R/PlotErrBar_interactions.R")
+source("./R/PlotErrBar_interactions_modified.R")
+
+# Check the order of the plot labels
+PlotErrBar_interactions(model = m1_final, resp = "Species richness", Effect1 = "LandUse.0", Effect2 = "Kingdom",
+                        ylims = c(-3,2.5), pointtype = c(16,17,18),blackwhite = FALSE)
+
+
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = m1_final,
+                             resp = "Rescaled total abundance",
+                             Effect1 = "LandUse.0", 
+                             Effect2 = "Kingdom",
+                             ylims = c(-0.2, 0.3),
+                             pointtype = c(16,17, 18),
+                             blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), 
+     y = -0.18, labels = c("Primary Minimal",
+                           "Cropland Light-Intense",
+                           "Cropland Minimal",
+                           "ISV Light-Intense",
+                           "ISV Minimal",
+                           "MSV All",
+                           "Pasture All",
+                           "Plantation Light-Intense",
+                           "Plantation Minimal",
+                           "Primary Light-Intense",
+                           "YSV All"),
+     srt = 18, cex= 0.7)
+
