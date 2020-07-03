@@ -273,12 +273,13 @@ addmargins(table(diversity_simpson1$LandUse.1, diversity_simpson1$Kingdom), 2)
 m1 <- lmer(Simpson_diversity ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
              (1|SS) + (1|SSB), data = diversity_simpson1) #Is Singular
 
+summary(m1)
 simulation_simpson1 <- simulateResiduals(fittedModel = m1, plot = TRUE)
 plot(m1)
 hist(diversity_simpson1$Simpson_diversity)
 # The simplest model does not converge
 
-# ---- 13. Try an second combination--------------------------------------------------------
+# ---- 13. Try a second combination--------------------------------------------------------
 
 # I am going to merge all categories
 
@@ -325,37 +326,255 @@ hist(diversity_simpson2$Simpson_diversity)
 
 
 
-# Try removing MSV
+# ---- 14. Try with log(1/D)--------------------------------------------------------
 
-diversity_simpson3 <- diversity_simpson2 %>% subset(LandUse.2 != "MSV All") %>% droplevels()
-
-m3 <- lmer(Simpson_diversity ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
-             (1|SS) + (1|SSB), data = diversity_simpson3) #Is Singular
+# ---14.1 Choose random effects structure  -----------------------------------------------------------------
 
 
+diversity_simpson <- diversity_simpson %>%
+  
+  # Create a new column to transform the response variable with log
+  mutate(log_one_over_D = log(Simpson_diversity))
+
+
+m1_log <- lmer(log_one_over_D ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+             (1|SS) + (1|SSB), data = diversity_simpson) 
+
+m2_log <- lmer(log_one_over_D ~ LandUse.1 + Kingdom + LandUse.1:Kingdom + 
+             (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_simpson)
+
+m3_log <- lmer(log_one_over_D ~ LandUse.1 + Kingdom + LandUse.1:Kingdom + 
+             (1+LandUse.1|SS) + (1|SSB), data = diversity_simpson)
+# fit is singular
+
+m4_log <- lmer(log_one_over_D ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +  
+             (1+Predominant_land_use|SS) + (1|SSB), data = diversity_simpson)
+# fit is singular
+
+# Compare the models that converged
+AIC(m1_log, m2_log)
+
+# ---14.2. Choose fixed effects structure  -----------------------------------------------------------------
+
+# See the significance of the terms in the model 
+Anova(m2_log)
+
+# ---14.3. Plot residuals: ----------------------------------------------------------------
+
+simulationOutput2 <- simulateResiduals(fittedModel = m2_log, plot = TRUE)
+plot(m2_log)
+
+# ---14.4. Estimates: ----------------------------------------------------------------
+summary(m2_log)
+
+# ---14.4. Plot results: ----------------------------------------------------------------
+
+
+# Read r code from a file which contains the function to make the plot
+source("./R/PlotErrBar_interactions.R")
+source("./R/PlotErrBar_interactions_modified.R")
+
+# Check the order of the plot labels
+PlotErrBar_interactions(model = m2_log, resp = "Abundance", Effect1 = "LandUse.1", Effect2 = "Kingdom",
+                        ylims = c(-2.5,2.5), pointtype = c(16,17,18),blackwhite = FALSE)
+
+
+
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model =  m2_log, resp = "Abundance", Effect1 = "LandUse.1", Effect2 = "Kingdom",
+                             ylims = c(-1,1), pointtype = c(16,17, 18),blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10), y = -0.9, labels = c("Primary Min",
+                                         "Cropland All",
+                                         "ISV LI",
+                                         "ISV Min",
+                                         "MSV All",
+                                         "Pasture All",
+                                         "Plantation LI",
+                                         "Plantation Min",
+                                         "Primary LI",
+                                         "YSV A"), srt = 18, cex= 0.7)
 
 
 
 
 
+# ---------------------RESULTS WITH THE BEST COMBINATION -------------------------------------------
+
+# 15. Load table -------------------------------------------------------------------------------------
+
+# Load Simpsons data that has already been filtered for studies that assessed more than 1 species
+# and has corrected abundance measures
+
+diversity_all_simpson <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Simpson_Site_metrics_animals_endooPlants_notendooPlants.rds")
+
+# Transform Simpson's diversity index
+diversity_all_simpson <- diversity_all_simpson %>%
+  
+  # Create a new column to transform the response variable with log
+  mutate(log_one_over_D = log(Simpson_diversity))
+
+# 15.1. Merge land-use intensities ------------------------------------------------------------------------
+
+# Call the function that merges lan-uses and intensities
+source("./R/02_Statistical_Analysis_merge_LandUses_Intensities.R")
+
+# Create the vectors that hold the land-uses that we want to keep with 
+# different use intensities 
+land_uses_separate_final <- c("Primary","Cropland", "ISV", "Plantation forest")
+# Create a vector with the land-uses where we want to merge the light 
+# and intense use intensities
+land_uses_light_intense_final <- c("Primary", "Cropland", "ISV", "Plantation forest")
 
 
+# Create the levels of the best combination for the tables that have all the records 
+diversity_all_simpson <- Merge_landUses_and_intensities(dataset = diversity_all_simpson,
+                                                          index = 0, 
+                                                          land_uses_separate_intensities = land_uses_separate_final,
+                                                          land_uses_merge_light_intense = land_uses_light_intense_final,
+                                                          "Primary Minimal use")
+
+# ---15.2. Test for collinearity  ----------------------------------------------------------------------
+
+# Since I'm going to explore the collinearity between categorical variables, I'm going to use 
+# the Generalized variance Inflation Factors function provided by Zuur et al., (2009)
+
+# Get the function
+source("https://highstat.com/Books/Book2/HighstatLibV10.R")
+
+# Calculate the VIF
+corvif(diversity_all_simpson[ , c("LandUse.0", "Kingdom")])
+
+# ---15.3. Complete cases --------------------------------------------------------------------------------
+
+# Create a table with complete cases
+diversity_all_simpson <- drop_na(diversity_all_simpson, 
+                                   Simpson_diversity, LandUse.0) %>% droplevels()
+
+# Check number of sites
+table(diversity_all_simpson$LandUse.0, diversity_all_simpson$Kingdom)
+
+# ---15.4 Model with log: -------------------------------------------------------------- 
+
+# I will log 1/D because otherwise the model does not converge
+m1_final <- lmer(log_one_over_D ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
+                   (1|Source_ID) + (1|SS) + (1|SSB),
+                 data = diversity_all_simpson)
+
+# test significance of fixed effects 
+Anova(m1_final)
+
+# Export estimates
+require(broom)
+out <- tidy(m1_final)
+
+# ---15.5 Plot residuals: ----------------------------------------------------------------
+
+plot(m1_final)
+
+#----15.6 Compare with model that has all the land-use intensities merge -----------------------------
+
+# Merge all the intensity levels for all land-use categories 
+
+# Create the vectors that hold the land-uses that we want to keep with different use intensities 
+land_uses_separate_null1 <- "NA"
+# Create a vector with the lad-uses that we want to merge
+land_uses_light_intense_null1 <- "NA"
 
 
+# This function creates new columns with the land-uses and use intensities that we want, then it then merges both columns 
+# into a LanUse column
+diversity_all_simpson <- Merge_landUses_and_intensities(diversity_all_simpson, 
+                                                          1,
+                                                          land_uses_separate_null1, 
+                                                          land_uses_light_intense_null1,
+                                                          "Primary All")
+# Check levels
+levels(diversity_all_simpson$LandUse.1)
 
 
+# Model richness with those land-use classes
+m2_final <- lmer(log_one_over_D ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+                   (1|Source_ID) + (1|SS) + (1|SSB),
+                 data = diversity_all_simpson)
+
+# Check they have the same sample size with the complex model
+summary(m2_final)
+
+# Compare AICs
+AIC(m1_final, m2_final)
+
+# Next we will check if we've lost a significant amount of explanatory power 
+# by removing this interaction. If we have, we want to keep the more complex
+# model. If we haven't lost a significant amount of explanatory power, then we
+# can keep the simpler model. 
+
+anova(m1_final, m2_final)
+
+#--15.7. Compare with null model of plants -----------------------------------------------
+
+# For the null model I am going to replace the nePlantae for Plantae 
+diversity_all_simpson <- diversity_all_simpson %>%
+  
+  mutate(
+    
+    # Create a new kingdom column as the copy of the kingdom column we used
+    # in the first model
+    Kingdom.1 = paste(Kingdom),
+    
+    # Replace nePlantae for Plantae
+    Kingdom.1 = recode_factor(Kingdom.1, "nePlantae" = "Plantae"), 
+    
+    # set reference level
+    Kingdom.1 = factor(Kingdom.1),
+    Kingdom.1 = relevel(Kingdom.1, ref = "Animalia"))
+
+# Check the levels
+levels(diversity_all_simpson$Kingdom.1)
+
+m3_final <- lmer(log_one_over_D ~ LandUse.0 + Kingdom.1 + LandUse.0:Kingdom.1 +
+                   (1|Source_ID) + (1|SS) + (1|SSB),
+                 data = diversity_all_simpson)
+
+# Check they have the same sample size with the complex model
+summary(m3_final)
+
+# check if we've lost a significant amount of explanatory power 
+anova(m1_final, m3_final, test = "F")
 
 
+# ---15.8. Plot results: ----------------------------------------------------------------
+
+# Read r code from a file which contains the function to make the plot
+source("./R/PlotErrBar_interactions.R")
+source("./R/PlotErrBar_interactions_modified.R")
+
+# Check the order of the plot labels
+PlotErrBar_interactions(model = m1_final, resp = "Simpson's diversity index", Effect1 = "LandUse.0", Effect2 = "Kingdom",
+                        ylims = c(-3,2.5), pointtype = c(16,17,18),blackwhite = FALSE)
 
 
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = m1_final,
+                             resp = "Simpson's diversity index",
+                             Effect1 = "LandUse.0", 
+                             Effect2 = "Kingdom",
+                             ylims = c(-1, 1),
+                             pointtype = c(16,17, 18),
+                             blackwhite = FALSE)
 
-# -------------------------------------------------------------------------------------------------------------
-diversity_simpson1 <- diversity_simpson %>% mutate(log = log(Simpson_diversity))
-
-min(diversity_simpson$Simpson_diversity)
-mtry <- lmer(log ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
-               (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_simpson)
-
-simulation_simpson2 <- simulateResiduals(fittedModel = mtry, plot = TRUE)
-
-AIC(m1, mtry)
+# Plot the x label
+text(x = c(0.8:10.8), 
+     y = -0.9, labels = c("Primary Minimal",
+                          "Cropland Light-Intense",
+                          "Cropland Minimal",
+                          "ISV Light-Intense",
+                          "ISV Minimal",
+                          "MSV All",
+                          "Pasture All",
+                          "Plantation Light-Intense",
+                          "Plantation Minimal",
+                          "Primary Light-Intense",
+                          "YSV All"),
+     srt = 18, cex= 0.7)
