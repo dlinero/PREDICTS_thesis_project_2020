@@ -1,0 +1,751 @@
+---
+title: "02_Statistical_Analysis_Combination_Landuses"
+author: "Daniela Linero"
+date: "3/7/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_chunk$set(cache = TRUE)
+knitr::opts_chunk$set(error = TRUE)
+library(knitr)
+library(kableExtra)
+```
+
+```{r load libraries, include=FALSE, warning=FALSE}
+library(yarg) # useful functions for dealing with PREDICTS data
+library(roquefort) # useful PREDICTS functions, particularly for plotting
+library(dplyr) # for handy data manipulation functions
+library(tidyr) # ditto
+library(lme4) # for mixed effects models
+library(car) # for getting anova tables with significance values
+library(DHARMa) # for model criticism plots
+library(MuMIn) # for checking explanatory power of mixed effects models
+library(stringr) # to replace text
+```
+
+```{r}
+# Read r code from a file which contains the function to make the plots
+source("./R/PlotErrBar_interactions.R")
+source("./R/PlotErrBar_interactions_modified.R")
+
+```
+
+In order to know which levels to use in all of the models:
+I will the run the abundance, species richness and Simpson´s diversity models with the same land-use/intensities levels, add their AICs and compare which option is better.
+
+```{r}
+# Call the function that merges lan-uses and intensities
+source("./R/02_Statistical_Analysis_merge_LandUses_Intensities.R")
+```
+
+
+```{r}
+# Load richness data
+diversity_all_richness <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Richness_Site_metrics_animals_endooPlants_notendooPlants.rds")
+
+# Load abundance data 
+diversity_all_abundance <- readRDS(file = "./output/cleaned_data/02_Statistical_Analysis_Abundance_Site_metrics_combined_animals_endooPlants_notEndooPlants.rds")
+
+# Transform rescaled abundance
+diversity_all_abundance <- dplyr::mutate(diversity_all_abundance, 
+                                  logAbundance = log(RescaledAbundance + 1)
+)
+
+# Load Simpsons data 
+diversity_all_simpson <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Simpson_Site_metrics_animals_endooPlants_notendooPlants.rds")
+
+# Transform Simpson's diversity index
+diversity_all_simpson <- diversity_all_simpson %>%
+  
+  # Create a new column to transform the response variable with log
+  dplyr::mutate(log_one_over_D = log(Simpson_diversity))
+
+```
+
+*1. First option* 
+
+* Primary: three level intensities 
+*	Cropland:  minimal use and light/intense use 
+* ISV: minimal use and light/intense use 
+* MSV: merged
+* Pasture: merged 
+* Plantation forest: minimal use and light/intense 
+* YSV: merged 
+
+```{r}
+
+# Create the vectors that hold the land-uses that we want to keep with 
+# different use intensities 
+land_uses_separate <- c("Primary", "Cropland", "ISV", "Plantation forest")
+# Create a vector with the land-uses where we want to merge the light and intense use intensities
+land_uses_light_intense <- c("Cropland", "ISV", "Plantation forest")
+
+
+diversity_all_richness <- Merge_landUses_and_intensities(
+  dataset = diversity_all_richness,
+ index = 1, 
+  land_uses_separate_intensities = land_uses_separate,
+  land_uses_merge_light_intense = land_uses_light_intense,
+  "Primary Minimal use")
+
+diversity_all_abundance <- Merge_landUses_and_intensities(
+  dataset = diversity_all_abundance,
+  index = 1, 
+  land_uses_separate_intensities = land_uses_separate,
+  land_uses_merge_light_intense = land_uses_light_intense,
+  "Primary Minimal use")
+
+diversity_all_simpson <- Merge_landUses_and_intensities(
+  dataset = diversity_all_simpson, 
+  index = 1, 
+  land_uses_separate_intensities = land_uses_separate,
+   land_uses_merge_light_intense = land_uses_light_intense,
+   "Primary Minimal use")
+```
+
+Species richness
+
+```{r}
+
+# Get complete cases, in order to compare models that use the same rows
+diversity_richness <- drop_na(diversity_all_richness, 
+                              Species_richness, LandUse.1)  %>%
+  droplevels()
+
+# Model richness with those land-use classes
+m1_richness <- glmer(Species_richness ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+                (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), 
+                data = diversity_richness, 
+                family = poisson, 
+                control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+# AIC
+AIC(m1_richness)
+
+```
+
+Abundance
+
+```{r}
+# Get complete cases, in order to compare models that use the same rows
+diversity_abundance <- drop_na(diversity_all_abundance, 
+                               RescaledAbundance, LandUse.1) %>% droplevels()
+
+
+# Model abundance with those land-use classes
+m1_abundance <- lmer(logAbundance ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+                           (1|Source_ID) + (1|SS) + (1|SSB), 
+                     data = diversity_abundance)
+
+# AIC
+AIC(m1_abundance)
+
+```
+
+Simpson's diversity index
+
+```{r}
+diversity_simpson <- drop_na(diversity_all_simpson, Simpson_diversity, LandUse.1)
+
+# Model simpson's index with those land-use classes
+m1_simpson <- lmer(log_one_over_D ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
+                       (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_simpson)
+
+# AIC
+AIC(m1_simpson)
+
+```
+
+*2. Second option* 
+
+* Primary: three level intensities 
+*	Cropland: merged
+* ISV: minimal use and light/intense use 
+* MSV: merged
+* Pasture: merged 
+* Plantation forest: minimal use and light/intense 
+* YSV: merged 
+
+```{r}
+# Create the vectors that hold the land-uses that we want to keep with 
+# different use intensities 
+land_uses_separate_2 <- c("Primary", "ISV", "Plantation forest")
+# Create a vector with the land-uses where we want to merge the light 
+# and intense use intensities
+land_uses_light_intense_2 <- c("ISV", "Plantation forest")
+
+
+diversity_richness <- Merge_landUses_and_intensities(dataset = diversity_richness, 
+                                                     index = 2, 
+             land_uses_separate_intensities = land_uses_separate_2,
+              land_uses_merge_light_intense = land_uses_light_intense_2,
+               "Primary Minimal use")
+
+diversity_abundance <- Merge_landUses_and_intensities(dataset = diversity_abundance,
+                                                      index = 2, 
+                     land_uses_separate_intensities = land_uses_separate_2,
+                      land_uses_merge_light_intense = land_uses_light_intense_2,
+                                                          "Primary Minimal use")
+
+diversity_simpson <- Merge_landUses_and_intensities(dataset = diversity_simpson,
+                                                    index = 2, 
+                          land_uses_separate_intensities = land_uses_separate_2,
+                          land_uses_merge_light_intense = land_uses_light_intense_2,
+                                                     "Primary Minimal use")
+
+```
+
+
+Species richness
+
+```{r}
+
+# Model richness with those land-use classes
+m2_richness <- glmer(Species_richness ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
+                       (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS),
+                     data = diversity_richness,
+                     family = poisson, 
+     control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+# AIC
+AIC(m2_richness)
+```
+
+Abundance
+
+```{r}
+# Model abundance with those land-use classes
+m2_abundance <- lmer(logAbundance ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
+                       (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_abundance)
+
+# AIC
+AIC(m2_abundance)
+```
+
+Simpson's diversity index
+
+```{r}
+
+# Model simpson's index with those land-use classes
+m2_simpson <- lmer(log_one_over_D ~ LandUse.2 + Kingdom + LandUse.2:Kingdom +
+                     (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_simpson)
+
+# AIC
+AIC(m2_simpson)
+```
+
+
+*3. Third option* 
+
+* Primary:  minimal use and light/intense use  
+*	Cropland: merged
+* ISV: minimal use and light/intense use 
+* MSV: merged
+* Pasture: merged 
+* Plantation forest: minimal use and light/intense 
+* YSV: merged 
+
+```{r}
+
+# Create the vectors that hold the land-uses that we want to keep with different
+# use intensities 
+land_uses_separate_3 <- c("Primary", "ISV", "Plantation forest")
+# Create a vector with the land-uses where we want to merge the light and 
+# intense use intensities
+land_uses_light_intense_3 <- c("Primary", "ISV", "Plantation forest")
+
+
+diversity_richness <- Merge_landUses_and_intensities(dataset = diversity_richness, 
+                                                     index = 3, 
+                    land_uses_separate_intensities = land_uses_separate_3,
+                    land_uses_merge_light_intense = land_uses_light_intense_3,
+                                                     "Primary Minimal use")
+
+diversity_abundance <- Merge_landUses_and_intensities(dataset = diversity_abundance, 
+                                                      index = 3, 
+                    land_uses_separate_intensities = land_uses_separate_3,
+                    land_uses_merge_light_intense = land_uses_light_intense_3,
+                                                      "Primary Minimal use")
+
+diversity_simpson <- Merge_landUses_and_intensities(dataset = diversity_simpson,
+                                                    index = 3, 
+                    land_uses_separate_intensities = land_uses_separate_3,
+                     land_uses_merge_light_intense = land_uses_light_intense_3,
+                                                    "Primary Minimal use")
+
+```
+
+Species richness
+
+```{r}
+# Model richness with those land-use classes
+m3_richness <- glmer(Species_richness ~ LandUse.3 + Kingdom + LandUse.3:Kingdom +
+                       (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), 
+                     data = diversity_richness, 
+                     family = poisson, 
+    control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+
+# AIC
+AIC(m3_richness)
+
+```
+
+Abundance
+
+```{r}
+# Model abudance with those land-use classes
+m3_abundance <- lmer(logAbundance ~ LandUse.3 + Kingdom + LandUse.3:Kingdom +
+                       (1|SS) + (1|SSB) + (1|Source_ID),
+                     data = diversity_abundance)
+
+# AIC
+AIC(m3_abundance)
+```
+
+Simpson's diversity
+
+```{r}
+
+# Model richness with those land-use classes
+m3_simpson <- lmer(log_one_over_D ~ LandUse.3 + Kingdom + LandUse.3:Kingdom +
+                     (1|SS) + (1|SSB) + (1|Source_ID),
+                   data = diversity_simpson)
+
+# AIC
+AIC(m3_simpson)
+```
+
+*4. Fourth option* 
+
+* Primary:  minimal use and light/intense use  
+*	Cropland: minimal use and light/intense use
+* ISV: minimal use and light/intense use 
+* MSV: merged
+* Pasture: merged 
+* Plantation forest: minimal use and light/intense 
+* YSV: merged 
+
+```{r}
+# Create the vectors that hold the land-uses that we want to keep with 
+# different use intensities 
+land_uses_separate_4 <- c("Primary","Cropland", "ISV", "Plantation forest")
+# Create a vector with the land-uses where we want to merge the light 
+# and intense use intensities
+land_uses_light_intense_4 <- c("Primary", "Cropland", "ISV", "Plantation forest")
+
+
+diversity_richness <- Merge_landUses_and_intensities(dataset = diversity_richness, 
+                                                     index = 4, 
+                    land_uses_separate_intensities = land_uses_separate_4,
+                    land_uses_merge_light_intense = land_uses_light_intense_4,
+                                                     "Primary Minimal use")
+
+diversity_abundance <- Merge_landUses_and_intensities(dataset = diversity_abundance, 
+                                                      index = 4, 
+                    land_uses_separate_intensities = land_uses_separate_4,
+                    land_uses_merge_light_intense = land_uses_light_intense_4,
+                                                      "Primary Minimal use")
+
+diversity_simpson <- Merge_landUses_and_intensities(dataset = diversity_simpson,
+                                                    index = 4, 
+                     land_uses_separate_intensities = land_uses_separate_4,
+                    land_uses_merge_light_intense = land_uses_light_intense_4,
+                                                    "Primary Minimal use")
+
+```
+
+Species richness
+
+```{r}
+# Model richness with those land-use classes
+m4_richness <- glmer(Species_richness ~ LandUse.4 + Kingdom + LandUse.4:Kingdom +
+                       (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS),
+                     data = diversity_richness, family = poisson, 
+   control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+
+# AIC
+AIC(m4_richness)
+```
+
+Abundance
+
+```{r}
+# Model abundance with those land-use classes
+m4_abundance <- lmer(logAbundance ~ LandUse.4 + Kingdom + LandUse.4:Kingdom +
+                       (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_abundance)
+
+# AIC
+AIC(m4_abundance)
+```
+
+Simpson's diversity index
+
+```{r}
+# Model simpsons index with those land-use classes
+m4_simpson <- lmer(log_one_over_D ~ LandUse.4 + Kingdom + LandUse.4:Kingdom +
+                     (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_simpson)
+
+# AIC
+AIC(m4_simpson)
+```
+
+
+
+*4. Choose the best combination*
+
+```{r}
+# First option
+sum(AIC(m1_richness) + AIC(m1_abundance), AIC(m1_simpson))
+```
+
+
+```{r}
+# Second option
+sum(AIC(m2_richness) + AIC(m2_abundance), AIC(m2_simpson))
+```
+
+
+```{r}
+# Third option
+sum(AIC(m3_richness) + AIC(m3_abundance), AIC(m3_simpson))
+```
+
+
+```{r}
+# Fourth option
+sum(AIC(m4_richness) + AIC(m4_abundance), AIC(m4_simpson))
+
+```
+
+Acoording to the results, the best option is option 4:
+* Primary:  minimal use and light/intense use  
+*	Cropland: minimal use and light/intense use
+* ISV: minimal use and light/intense use 
+* MSV: merged
+* Pasture: merged 
+* Plantation forest: minimal use and light/intense 
+* YSV: merged 
+
+### The results therefore will be
+
+#### Species richness
+
+The best model is:
+m4_richness <- glmer(Species_richness ~ LandUse.4 + Kingdom + LandUse.4:Kingdom +
+                       (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS),
+                     data = diversity_richness, family = poisson, 
+   control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+
+**Compare with a model that has all the land-use intensities merged**
+
+```{r}
+# Create the vectors that hold the land-uses that we want to keep with
+# different use intensities 
+land_uses_separate_null_5 <- "NA"
+# Create a vector with the land-uses that we want to merge
+land_uses_light_intense_null_5 <- "NA"
+
+
+# This function creates new columns with the land-uses and use intensities that we want,
+# then it then merges both columns into a LanUse column
+diversity_richness <- Merge_landUses_and_intensities(diversity_richness, 
+                                                5,
+                                                land_uses_separate_null_5, 
+                                                land_uses_light_intense_null_5,
+                                                "Primary All")
+
+# Model richness with those land-use classes
+m4_null_1_richness <- glmer(Species_richness ~ LandUse.5 + Kingdom + LandUse.5:Kingdom +
+                  (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), 
+                  data = diversity_richness,
+                  family = poisson, 
+        control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+
+# Next we will check if we've lost a significant amount of explanatory power 
+# by removing this interaction. If we have, we want to keep the more complex
+# model. If we haven't lost a significant amount of explanatory power, then we
+# can keep the simpler model. 
+
+anova(m4_richness, m4_null_1_richness)
+
+
+```
+
+**Plant constrast**
+
+```{r}
+# For the null model I am going to replace the nePlantae for Plantae 
+diversity_richness  <- diversity_richness  %>%
+
+  mutate(
+    
+    # Create a new kingdom column as the copy of the kingdom column we used
+    # in the first model
+    Kingdom.1 = paste(Kingdom),
+    
+    # Replace nePlantae for Plantae
+    Kingdom.1 = recode_factor(Kingdom.1, "nePlantae" = "Plantae"), 
+    
+    # set reference level
+    Kingdom.1 = factor(Kingdom.1),
+    Kingdom.1 = relevel(Kingdom.1, ref = "Animalia"))
+
+
+m4_null_2_richness <- glmer(Species_richness ~ LandUse.4 + Kingdom.1 + LandUse.4:Kingdom.1 +
+                  (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS),
+                  data = diversity_richness, 
+                  family = poisson, 
+        control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+
+# check if we've lost a significant amount of explanatory power 
+anova(m4_richness, m4_null_2_richness, test = "F")
+
+```
+
+**Estimates of the selected model**
+
+```{r }
+estimates_richness <- read.csv("./output/summary_final_richness.csv", header = TRUE, sep = ";")
+kable(estimates_richness, format="latex", booktabs=TRUE) %>% 
+  kable_styling(latex_options="scale_down")
+```
+
+**Plot of the results**
+
+```{r}
+
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = m4_richness,
+                             resp = "Species Richness",
+                             Effect1 = "LandUse.4", 
+                             Effect2 = "Kingdom",
+                             ylims = c(-3,2.5),
+                             pointtype = c(16,17, 18),
+                             blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), 
+     y = -3, labels = c("Primary Min",
+                                         "Cropland Li-In",
+                                         "Cropland Min",
+                                         "ISV Li-In",
+                                         "ISV Min",
+                                         "MSV All",
+                                         "Pasture All",
+                                         "Plantation Li-In",
+                                         "Plantation Min",
+                                         "Primary Li-In",
+                                         "YSV All"),
+     srt = 18, cex= 0.7)
+
+
+
+```
+
+#### Abundance
+
+m4_abundance <- lmer(logAbundance ~ LandUse.4 + Kingdom + LandUse.4:Kingdom +
+                       (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_abundance)
+
+
+**Compare with a model that has all the land-use intensities merged**
+
+```{r}
+
+# This function creates new columns with the land-uses and use intensities that we want,
+# then it then merges both columns into a LanUse column
+diversity_abundance <- Merge_landUses_and_intensities(diversity_abundance, 
+                                                5,
+                                                land_uses_separate_null_5, 
+                                                land_uses_light_intense_null_5,
+                                                "Primary All")
+
+# Model abundance with those land-use classes
+m4_null_1_abundance <- lmer(logAbundance ~ LandUse.5 + Kingdom +
+                              LandUse.5:Kingdom +
+                        (1|Source_ID) + (1|SS) + (1|SSB),
+                        data = diversity_abundance)
+
+# Next we will check if we've lost a significant amount of explanatory power 
+
+anova(m4_abundance, m4_null_1_abundance)
+
+```
+
+**Plant constrast**
+
+```{r}
+# For the null model I am going to replace the nePlantae for Plantae 
+diversity_abundance  <- diversity_abundance  %>%
+
+  mutate(
+    
+    # Create a new kingdom column as the copy of the kingdom column we used
+    # in the first model
+    Kingdom.1 = paste(Kingdom),
+    
+    # Replace nePlantae for Plantae
+    Kingdom.1 = recode_factor(Kingdom.1, "nePlantae" = "Plantae"), 
+    
+    # set reference level
+    Kingdom.1 = factor(Kingdom.1),
+    Kingdom.1 = relevel(Kingdom.1, ref = "Animalia"))
+
+
+m4_null_2_abundance <- lmer(logAbundance ~ LandUse.4 + Kingdom.1 +
+                              LandUse.4:Kingdom.1 +
+                        (1|Source_ID) + (1|SS) + (1|SSB), 
+                        data = diversity_abundance)
+
+
+# check if we've lost a significant amount of explanatory power 
+anova(m4_abundance, m4_null_2_abundance, test = "F")
+
+```
+
+**Estimates of the selected model**
+
+```{r }
+estimates_abundance <- read.csv("./output/summary_final_abundance.csv", header = TRUE, sep = ";")
+kable(estimates_abundance, format="latex", booktabs=TRUE) %>% 
+  kable_styling(latex_options="scale_down")
+```
+
+**Plot of the results**
+
+```{r}
+
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = m4_abundance,
+                             resp = "Rescaled total abundance",
+                             Effect1 = "LandUse.4", 
+                             Effect2 = "Kingdom",
+                             ylims = c(-0.2, 0.3),
+                             pointtype = c(16,17, 18),
+                             blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), 
+     y = -0.18, labels = c("Primary Min",
+                                         "Cropland Li-In",
+                                         "Cropland Min",
+                                         "ISV Li-In",
+                                         "ISV Min",
+                                         "MSV All",
+                                         "Pasture All",
+                                         "Plantation Li-In",
+                                         "Plantation Min",
+                                         "Primary Li-In",
+                                         "YSV All"),
+     srt = 18, cex= 0.7)
+
+
+
+```
+
+### Simpson's diversity
+
+m4_simpson <- lmer(log_one_over_D ~ LandUse.4 + Kingdom + LandUse.4:Kingdom +
+                     (1|SS) + (1|SSB) + (1|Source_ID), data = diversity_simpson)
+
+
+**Compare with a model that has all the land-use intensities merged**
+
+```{r}
+
+# This function creates new columns with the land-uses and use intensities that we want,
+# then it then merges both columns into a LanUse column
+diversity_simpson <- Merge_landUses_and_intensities(diversity_simpson, 
+                                                5,
+                                                land_uses_separate_null_5, 
+                                                land_uses_light_intense_null_5,
+                                                "Primary All")
+
+# Model 1/D with those land-use classes
+m4_null_1_simpson <- lmer(log_one_over_D ~ LandUse.5 + Kingdom + 
+                            LandUse.5:Kingdom +
+                        (1|Source_ID) + (1|SS) + (1|SSB), 
+                        data = diversity_simpson)
+
+# Next we will check if we've lost a significant amount of explanatory power 
+
+anova(m4_simpson, m4_null_1_simpson)
+
+```
+
+**Plant constrast**
+
+```{r}
+# For the null model I am going to replace the nePlantae for Plantae 
+diversity_simpson  <- diversity_simpson  %>%
+
+  mutate(
+    
+    # Create a new kingdom column as the copy of the kingdom column we used
+    # in the first model
+    Kingdom.1 = paste(Kingdom),
+    
+    # Replace nePlantae for Plantae
+    Kingdom.1 = recode_factor(Kingdom.1, "nePlantae" = "Plantae"), 
+    
+    # set reference level
+    Kingdom.1 = factor(Kingdom.1),
+    Kingdom.1 = relevel(Kingdom.1, ref = "Animalia"))
+
+
+m4_null_2_simpson <- lmer(log_one_over_D ~ LandUse.4 + Kingdom.1 +
+                            LandUse.4:Kingdom.1 +
+                        (1|Source_ID) + (1|SS) + (1|SSB), 
+                        data = diversity_simpson)
+
+
+# check if we've lost a significant amount of explanatory power 
+anova(m4_simpson, m4_null_2_simpson, test = "F")
+
+```
+
+**Estimates of the selected model**
+
+```{r }
+estimates_simpson <- read.csv("./output/summary_final_simpson.csv", header = TRUE, sep = ";")
+kable(estimates_simpson, format="latex", booktabs=TRUE) %>% 
+  kable_styling(latex_options="scale_down")
+```
+
+**Plot the results**
+
+```{r}
+
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = m4_simpson,
+                             resp = "Simpson's diversity index",
+                             Effect1 = "LandUse.4", 
+                             Effect2 = "Kingdom",
+                             ylims = c(-1, 1),
+                             pointtype = c(16,17, 18),
+                             blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), 
+     y = -0.9, labels = c("Primary Min",
+                                         "Cropland Li-In",
+                                         "Cropland Min",
+                                         "ISV Li-In",
+                                         "ISV Minimal",
+                                         "MSV All",
+                                         "Pasture All",
+                                         "Plantation Li-In",
+                                         "Plantation Min",
+                                         "Primary Li-In",
+                                         "YSV All"),
+     srt = 18, cex= 0.7)
+
+```
