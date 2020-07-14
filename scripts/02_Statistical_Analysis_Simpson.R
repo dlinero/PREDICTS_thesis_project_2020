@@ -119,6 +119,9 @@ diversityS_frugi_endo <-  dplyr::rename(diversityS_frugi_endo,
 diversityS_notEndo <-  dplyr::rename(diversityS_notEndo,
                                      Predominant_land_use = Predominant_habitat)
 
+# Merge tables and export data
+saveRDS((rbind.data.frame(diversityS_frugi_endo, diversityS_notEndo)), file = "./output/intermediate_files/02_Statistical_Analysis_Simpson_species_all.rds")
+
 
 # ----8.  Calculate diversity metrics -----------------------------------------------
 

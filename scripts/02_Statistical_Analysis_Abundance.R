@@ -1,4 +1,3 @@
-
 # Clear workspace
 rm(list = ls())
 
@@ -31,6 +30,24 @@ diversity <- readRDS("./output/cleaned_data/01_Filter_data_PREDICTS_Filtered_tab
 # 3. Then it takes the abundance measure and divides it by the rescaled sampling effort. 
 
 diversity1 <- yarg::CorrectSamplingEffort(diversity) 
+
+
+# Count the amount of studies that were corrected 
+corrected_sampling <- diversity %>% 
+  
+  # Subset the studies where the abundance measures were effort sensitive
+  subset(Diversity_metric_is_effort_sensitive == TRUE) %>%
+  
+  # Group by studies within sources
+  group_by(SS) %>% 
+  
+  # Count the number of different sampling effort within studies
+  summarise(different_sampling_efforts = n_distinct(Sampling_effort))
+
+# Count the number of studies that had measures sensitive to effort and had 
+# different sampling efforts among sites.
+
+length(which(corrected_sampling$different_sampling_efforts != 1))
 
 # ---- 3. Merge Sites -------------------------------------------------------------
 
@@ -122,8 +139,8 @@ first_model_data <- diversity4 %>%
     
     # Give a shorter name to some land use categories 
     Predominant_land_use = str_replace_all(Predominant_land_use, pattern = c("Young secondary vegetation" = "YSV",
-                                            "Intermediate secondary vegetation" = "ISV", 
-                                           "Mature secondary vegetation" = "MSV")),
+                                                                             "Intermediate secondary vegetation" = "ISV", 
+                                                                             "Mature secondary vegetation" = "MSV")),
     
     # Paste the land-use classes and intensity levels
     LandUse = ifelse(Predominant_land_use != "NA" & Use_intensity != "NA",
@@ -151,7 +168,7 @@ levels(first_model_data$LandUse)
 # metric type was occurrence instead of abudance. 
 
 first_model_data1 <- drop_na(first_model_data, 
-                       Total_abundance, LandUse) %>% droplevels()
+                             Total_abundance, LandUse) %>% droplevels()
 
 # Check the number of sites per land use and use intensity combination
 table(first_model_data1$LandUse)
@@ -172,8 +189,8 @@ hist(first_model_data1$RescaledAbundance)
 
 # Transform RescaledAbundance.
 first_model_data1 <- mutate(first_model_data1, 
-                      logAbundance = log(RescaledAbundance + 1),
-                      sqrtAbundance = sqrt(RescaledAbundance)
+                            logAbundance = log(RescaledAbundance + 1),
+                            sqrtAbundance = sqrt(RescaledAbundance)
 )
 
 # Plot histograms of the rescaled abundance
@@ -212,7 +229,7 @@ m5 <- lmer(sqrtAbundance ~ LandUse +
 # fit is singular
 
 m6 <- lmer(sqrtAbundance ~ LandUse + 
-           (1+Predominant_land_use|SS) + (1|SSB) + (1|Source_ID), data = first_model_data1)
+             (1+Predominant_land_use|SS) + (1|SSB) + (1|Source_ID), data = first_model_data1)
 
 m7 <- lmer(sqrtAbundance ~ LandUse + 
              (1+Use_intensity|SS) + (1|SSB), data = first_model_data1)
@@ -288,9 +305,9 @@ second_model_data <- diversity4 %>%
     Predominant_land_use = na_if(Predominant_land_use, "Secondary vegetation (indeterminate age)"),
     Predominant_land_use = na_if(Predominant_land_use, "Cannot decide"),
     Predominant_land_use = na_if(Predominant_land_use, "Urban"),
-   
     
-     # Give a shorter name to some land use categories 
+    
+    # Give a shorter name to some land use categories 
     Predominant_land_use = str_replace_all(Predominant_land_use, pattern = c("Young secondary vegetation" = "YSV",
                                                                              "Intermediate secondary vegetation" = "ISV", 
                                                                              "Mature secondary vegetation" = "MSV")),
@@ -302,7 +319,7 @@ second_model_data <- diversity4 %>%
 
 # Drop sites that don't have abundance measures or land-use data
 second_model_data1 <- drop_na(second_model_data, 
-                             Total_abundance, Predominant_land_use) %>% droplevels()
+                              Total_abundance, Predominant_land_use) %>% droplevels()
 
 
 # Check the number of sites for animals and plants
@@ -326,14 +343,14 @@ second_model_data2 <- second_model_data1 %>%
     
     # Join the intensity levels of light and intense for Plantation forest and ISV 
     Use_intensity = ifelse((Predominant_land_use == "Plantation forest" | Predominant_land_use == "ISV") & (Use_intensity == "Intense use" | Use_intensity == "Light use"),
-      str_replace_all(Use_intensity, pattern = c("Intense use" = "Light-intense use", "Light use" = "Light-intense use")), paste(Use_intensity)),
+                           str_replace_all(Use_intensity, pattern = c("Intense use" = "Light-intense use", "Light use" = "Light-intense use")), paste(Use_intensity)),
     
     # Merge all the intensity levels for those land-use categories that don't have enough sites in each land-use type/intensity combination
     Use_intensity = ifelse(Predominant_land_use %nin% LandUse_divide,
                            str_replace_all(Use_intensity, pattern = c("Intense use" = "All", "Light use" = "All", "Minimal use" = "All", "Cannot decide" = "All")), 
                            paste(Use_intensity)),
     
-
+    
     # Paste the land-use classes and intensity levels
     LandUse = ifelse(Predominant_land_use != "NA" & Use_intensity != "NA",
                      paste(Predominant_land_use, Use_intensity),
@@ -380,8 +397,8 @@ hist(second_model_data2$RescaledAbundance)
 
 # Transform RescaledAbundance.
 second_model_data2 <- mutate(second_model_data2, 
-                            logAbundance = log(RescaledAbundance + 1),
-                            sqrtAbundance = sqrt(RescaledAbundance)
+                             logAbundance = log(RescaledAbundance + 1),
+                             sqrtAbundance = sqrt(RescaledAbundance)
 )
 
 # Plot histograms of the rescaled abundance
@@ -396,24 +413,24 @@ ggplot(second_model_data2, aes(x=LandUse, y= RescaledAbundance, color= Kingdom))
 # structures.
 
 m2_1 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-             (1|SS) + (1|SSB), data = second_model_data2)
+               (1|SS) + (1|SSB), data = second_model_data2)
 
 m2_2 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-             (1|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
+               (1|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
 
 m2_3 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-             (1+LandUse|SS) + (1|SSB), data = second_model_data2)
+               (1+LandUse|SS) + (1|SSB), data = second_model_data2)
 # IsSingular
 
 m2_4 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-             (1+LandUse|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
+               (1+LandUse|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
 
 m2_5 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-             (1+Predominant_land_use|SS) + (1|SSB), data = second_model_data2)
+               (1+Predominant_land_use|SS) + (1|SSB), data = second_model_data2)
 # IsSingular
 
 m2_6 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-             (1+Predominant_land_use|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
+               (1+Predominant_land_use|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
 
 
 # compare the models that converged using Akaike's Information Criterion (AIC)
@@ -455,28 +472,28 @@ source("./R/PlotErrBar_interactions_modified.R")
 
 # Plot the differences between estimates 
 PlotErrBar_interactions_modi(model = m2_2, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
-                        ylims = c(-0.4,0.4), pointtype = c(16,17),blackwhite = FALSE)
+                             ylims = c(-0.4,0.4), pointtype = c(16,17),blackwhite = FALSE)
 
 # Plot the x label
 text(x = c(0.8:10.8), y = -0.38, labels = c("Primary minimal use", 
-                                      "Cropland all uses", 
-                                      "ISV light-intense use",
-                                      "ISV minimal use",
-                                      "MSV all uses",
-                                      "Pasture all uses",
-                                      "Plantation forest light-intense use",
-                                      "Plantation forest minimal use", 
-                                      "Primary intense use",
-                                      "Primary light use",
-                                      "YSV all uses"), srt = 15, cex= 0.9)
+                                            "Cropland all uses", 
+                                            "ISV light-intense use",
+                                            "ISV minimal use",
+                                            "MSV all uses",
+                                            "Pasture all uses",
+                                            "Plantation forest light-intense use",
+                                            "Plantation forest minimal use", 
+                                            "Primary intense use",
+                                            "Primary light use",
+                                            "YSV all uses"), srt = 15, cex= 0.9)
 
 # ---8.9. Run the models with log: ----------------------------------------------------------------
 
 m2l_1 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-               (1|SS) + (1|SSB), data = second_model_data2)
+                (1|SS) + (1|SSB), data = second_model_data2)
 
 m2l_2 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-               (1|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
+                (1|SS) + (1|SSB) + (1|Source_ID), data = second_model_data2)
 
 AIC(m2l_1, m2l_2)
 
@@ -510,8 +527,8 @@ Third_model_data <- diversity4 %>%
                                                                              "Intermediate secondary vegetation" = "ISV", 
                                                                              "Mature secondary vegetation" = "MSV")),
     
-   
-     # Merge all the intensity levels for all land-use categories 
+    
+    # Merge all the intensity levels for all land-use categories 
     Use_intensity = ifelse(Use_intensity != "NA", "All", "NA"),
     
     # Paste the land-use classes and intensity levels
@@ -540,7 +557,7 @@ corvif(Third_model_data[ , c("LandUse", "Kingdom")])
 
 # Create a table with complete cases
 Third_model_data2 <- drop_na(Third_model_data, 
-                              Total_abundance, LandUse) %>% droplevels()
+                             Total_abundance, LandUse) %>% droplevels()
 
 # Check number of sites
 table(Third_model_data2$LandUse, Third_model_data2$Kingdom)
@@ -560,8 +577,8 @@ hist(Third_model_data2$RescaledAbundance)
 
 # Transform RescaledAbundance.
 Third_model_data2 <- mutate(Third_model_data2, 
-                             logAbundance = log(RescaledAbundance + 1),
-                             sqrtAbundance = sqrt(RescaledAbundance)
+                            logAbundance = log(RescaledAbundance + 1),
+                            sqrtAbundance = sqrt(RescaledAbundance)
 )
 
 # Plot histograms of the rescaled abundance
@@ -635,7 +652,7 @@ source("./R/PlotErrBar_interactions_modified.R")
 
 par(mar = c(10, 2, 2, 2))
 PlotErrBar_interactions(model = m3_2, resp = "Abundance", Effect1 = "LandUse", Effect2 = "Kingdom",
-                             ylims = c(-0.4,0.4), pointtype = c(16,17),blackwhite = FALSE)
+                        ylims = c(-0.4,0.4), pointtype = c(16,17),blackwhite = FALSE)
 
 
 
@@ -645,12 +662,12 @@ PlotErrBar_interactions_modi(model = m3_2, resp = "Abundance", Effect1 = "LandUs
 
 # Plot the x label
 text(x = c(0.8, 1.8, 2.8, 3.8, 4.7, 5.7, 6.8), y = -0.38, labels = c("Primary", 
-                                            "Cropland", 
-                                            "ISV",                                          
-                                            "MSV",
-                                            "Pasture",
-                                            "Plantation forest",
-                                            "YSV all"), srt = 15, cex= 0.9)
+                                                                     "Cropland", 
+                                                                     "ISV",                                          
+                                                                     "MSV",
+                                                                     "Pasture",
+                                                                     "Plantation forest",
+                                                                     "YSV all"), srt = 15, cex= 0.9)
 
 # --9.9. Run the models with log: ----------------------------------------------------------------
 
@@ -676,12 +693,12 @@ PlotErrBar_interactions_modi(model = m3l_2, resp = "Abundance", Effect1 = "LandU
 
 # Plot the x label
 text(x = c(0.8, 1.8, 2.8, 3.8, 4.7, 5.7, 6.8), y = -0.2, labels = c("Primary", 
-                                                                     "Cropland", 
-                                                                     "ISV",                                          
-                                                                     "MSV",
-                                                                     "Pasture",
-                                                                     "Plantation forest",
-                                                                     "YSV all"), srt = 15, cex= 0.9)
+                                                                    "Cropland", 
+                                                                    "ISV",                                          
+                                                                    "MSV",
+                                                                    "Pasture",
+                                                                    "Plantation forest",
+                                                                    "YSV all"), srt = 15, cex= 0.9)
 
 # 10. Choose between mergin all use -intensities -------------------------------------------------------
 # for all land-uses or only for those that do not have enough sites for each combination
@@ -697,7 +714,7 @@ m2_2 <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
 summary(m2_2)
 # Same model but with log 
 m2_2l <- lmer(logAbundance~ LandUse + Kingdom + LandUse:Kingdom +
-               (1|SS) + (1|SSB) + (1|Source_ID), data = WH_merged)
+                (1|SS) + (1|SSB) + (1|Source_ID), data = WH_merged)
 
 
 # Check overdispersion
@@ -709,15 +726,15 @@ WH_merged <- WH_merged %>% mutate(
   
   # Merge all the intensity levels for all land-use categories 
   Use_intensity = ifelse(Use_intensity != "NA", "All", "NA"),
-
+  
   # Paste the land-use classes and intensity levels
   LandUse = ifelse(Predominant_land_use != "NA" & Use_intensity != "NA",
-                 paste(Predominant_land_use, Use_intensity),
-                 NA),
-
-# set reference level
-LandUse = factor(LandUse),
-LandUse = relevel(LandUse, ref = "Primary All")
+                   paste(Predominant_land_use, Use_intensity),
+                   NA),
+  
+  # set reference level
+  LandUse = factor(LandUse),
+  LandUse = relevel(LandUse, ref = "Primary All")
 )
 
 # Check number of sites
@@ -725,12 +742,12 @@ table(second_model_data2_merged$LandUse, second_model_data2_merged$Kingdom)
 
 # Model with merged land-uses
 m2_2_m <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-               (1|SS) + (1|SSB) + (1|Source_ID), data = WH_merged)
+                 (1|SS) + (1|SSB) + (1|Source_ID), data = WH_merged)
 summary(m2_2_m)
 
 # same model but with log
 m2_2_ml <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-                 (1|SS) + (1|SSB) + (1|Source_ID), data = WH_merged)
+                  (1|SS) + (1|SSB) + (1|Source_ID), data = WH_merged)
 
 # Check overdispersion
 simulateResiduals_m2_2_m <- simulateResiduals(fittedModel = m2_2_m) 
@@ -782,18 +799,28 @@ PREDICTS_not_endoo_plants1 <- yarg::CorrectSamplingEffort(PREDICTS_not_endoo_pla
 # coordinates have an error) OR maybe it is, but we are having a conservative approach
 
 PREDICTS_not_endoo_plants2 <- yarg::MergeSites(PREDICTS_not_endoo_plants1,
-                               silent = TRUE,
-                               merge.extra = "Wilderness_area")
+                                               silent = TRUE,
+                                               merge.extra = "Wilderness_area")
 
 # ----11.4. Rename Predominant habitat --------------------------------------------------
 
 # Rename the column predominant habitat, as the dataset is actually refering to land use
 PREDICTS_not_endoo_plants2 <- rename(PREDICTS_not_endoo_plants2,
-                     Predominant_land_use = Predominant_habitat)
+                                     Predominant_land_use = Predominant_habitat)
 
 
-plants <- PREDICTS_not_endoo_plants2 %>% subset(Diversity_metric_type == "Abundance") %>% droplevels()
-levels(plants$Diversity_metric_unit)
+# Add an identifier to kingdom
+PREDICTS_not_endoo_plants_sp <- PREDICTS_not_endoo_plants2 %>% 
+                                  
+                                  # Change the kingdom name
+                                  mutate(Kingdom = "nePlantae",
+                                  # Transform column into a factor       
+                                  Kingdom = as.factor(Kingdom))
+
+# Export table that contains the species names for all groups
+# this table contains sites that produce NaN values
+saveRDS((rbind.data.frame(PREDICTS_not_endoo_plants_sp, diversity2)), file = "./output/intermediate_files/02_Statistical_Analysis_Abundance_species_all.rds")
+
 
 # ----11.5.  Calculate diversity metrics -----------------------------------------------
 
@@ -872,7 +899,7 @@ NotEndoo_plants_sites <- PREDICTS_not_endoo_plants3 %>%
 
 # Drop sites that don't have abundance measures or land-use data
 NotEndoo_plants_sites1 <- drop_na(NotEndoo_plants_sites, 
-                              Total_abundance, Predominant_land_use) %>% droplevels()
+                                  Total_abundance, Predominant_land_use) %>% droplevels()
 
 
 # Check the number of sites 
@@ -913,8 +940,8 @@ fourth_model_data <- diversity5 %>%
     
     # collapse primary forest and non-forest together into primary vegetation as these aren't well distinguished
     Predominant_land_use_copy = recode_factor(Predominant_land_use_copy, 
-                                         "Primary forest" = "Primary", 
-                                         "Primary non-forest" = "Primary"),
+                                              "Primary forest" = "Primary", 
+                                              "Primary non-forest" = "Primary"),
     
     # indeterminate secondary veg and cannot decide are transformed into NA, urban too because it has only 40 sites. 
     Predominant_land_use_copy = na_if(Predominant_land_use_copy, "Secondary vegetation (indeterminate age)"),
@@ -924,23 +951,23 @@ fourth_model_data <- diversity5 %>%
     
     # Give a shorter name to some land use categories 
     Predominant_land_use_copy = str_replace_all(Predominant_land_use_copy, pattern = c("Young secondary vegetation" = "YSV",
-                                                                             "Intermediate secondary vegetation" = "ISV", 
-                                                                             "Mature secondary vegetation" = "MSV")),
+                                                                                       "Intermediate secondary vegetation" = "ISV", 
+                                                                                       "Mature secondary vegetation" = "MSV")),
     
     # Drop the Cannot decide intensity levels for the land-use categories that have 
     # enough sites for the minimal, and light/intense
     Use_intensity_copy = ifelse(Predominant_land_use_copy %in% LandUse_divide & Use_intensity_copy == "Cannot decide",
-                           NA,
-                           paste(Use_intensity_copy)), 
+                                NA,
+                                paste(Use_intensity_copy)), 
     
     # Join the intensity levels of light and intense for Plantation forest and ISV 
     Use_intensity_copy = ifelse((Predominant_land_use_copy == "Plantation forest" | Predominant_land_use_copy == "ISV") & (Use_intensity_copy == "Intense use" | Use_intensity_copy == "Light use"),
-                           str_replace_all(Use_intensity_copy, pattern = c("Intense use" = "Light-intense use", "Light use" = "Light-intense use")), paste(Use_intensity_copy)),
+                                str_replace_all(Use_intensity_copy, pattern = c("Intense use" = "Light-intense use", "Light use" = "Light-intense use")), paste(Use_intensity_copy)),
     
     # Merge all the intensity levels for those land-use categories that don't have enough sites in each land-use type/intensity combination
     Use_intensity_copy = ifelse(Predominant_land_use_copy %nin% LandUse_divide,
-                           str_replace_all(Use_intensity_copy, pattern = c("Intense use" = "All", "Light use" = "All", "Minimal use" = "All", "Cannot decide" = "All")), 
-                           paste(Use_intensity_copy)),
+                                str_replace_all(Use_intensity_copy, pattern = c("Intense use" = "All", "Light use" = "All", "Minimal use" = "All", "Cannot decide" = "All")), 
+                                paste(Use_intensity_copy)),
     
     
     # Paste the land-use classes and intensity levels
@@ -985,8 +1012,8 @@ hist(fourth_model_data1$RescaledAbundance)
 
 # Transform RescaledAbundance.
 fourth_model_data2 <- mutate(fourth_model_data1, 
-                            logAbundance = log(RescaledAbundance + 1),
-                            sqrtAbundance = sqrt(RescaledAbundance)
+                             logAbundance = log(RescaledAbundance + 1),
+                             sqrtAbundance = sqrt(RescaledAbundance)
 )
 
 # Plot histograms of the rescaled abundance
@@ -1094,11 +1121,11 @@ fourth_model_data2 <- fourth_model_data2 %>% mutate(
   
   # Merge all the intensity levels for all land-use categories 
   Use_intensity_copy_2 = ifelse(Use_intensity_copy_2 != "NA", "All", "NA"),
-
+  
   # Paste the land-use classes and intensity levels in a new land use column
   LandUse_copy = ifelse(Predominant_land_use_copy != "NA" & Use_intensity_copy_2 != "NA",
-                   paste(Predominant_land_use_copy, Use_intensity_copy_2),
-                   NA),
+                        paste(Predominant_land_use_copy, Use_intensity_copy_2),
+                        NA),
   
   # set reference level
   LandUse_copy = factor(LandUse_copy),
@@ -1138,15 +1165,15 @@ fourth_model_data2 <- fourth_model_data2 %>%
     # Create a new kingdom column as the copy of the kingdom column we used
     # in the first model
     Kingdom_copy = paste(Kingdom),
-      
-      # Replace nePlantae for Plantae
+    
+    # Replace nePlantae for Plantae
     Kingdom_copy = recode_factor(Kingdom, "nePlantae" = "Plantae"), 
-
-# set reference level
-LandUse = factor(LandUse),
-LandUse = relevel(LandUse, ref = "Primary Minimal use"), 
-Kingdom_copy = factor(Kingdom_copy),
-Kingdom_copy = relevel(Kingdom_copy, ref = "Animalia"))
+    
+    # set reference level
+    LandUse = factor(LandUse),
+    LandUse = relevel(LandUse, ref = "Primary Minimal use"), 
+    Kingdom_copy = factor(Kingdom_copy),
+    Kingdom_copy = relevel(Kingdom_copy, ref = "Animalia"))
 
 # Check the levels
 levels(fourth_model_data2$Kingdom_copy)
@@ -1154,7 +1181,7 @@ levels(fourth_model_data2$Kingdom_copy)
 # ---12.12.1. Compare complex and null models: -----------------------------------------------
 
 m4_2_mk <- lmer(logAbundance ~ LandUse + Kingdom_copy + LandUse:Kingdom_copy +
-               (1|SS) + (1|SSB) + (1|Source_ID), data = fourth_model_data2)
+                  (1|SS) + (1|SSB) + (1|Source_ID), data = fourth_model_data2)
 summary(m4_2_mk)
 
 anova(m4_2_mk, m4_2, test = "F")
@@ -1167,7 +1194,7 @@ m4_2 <- lmer(logAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
 
 # Selected model with sqrt
 m4_2_sqrt <- lmer(sqrtAbundance ~ LandUse + Kingdom + LandUse:Kingdom +
-              (1|SS) + (1|SSB) + (1|Source_ID), data = fourth_model_data2)
+                    (1|SS) + (1|SSB) + (1|Source_ID), data = fourth_model_data2)
 
 # Read r code from a file which contains the function to make the plot
 source("./R/PlotErrBar_interactions.R")
@@ -1223,10 +1250,10 @@ land_uses_light_intense_final <- c("Primary", "Cropland", "ISV", "Plantation for
 
 # Create the levels of the best combination for the tables that have all the records 
 diversity_all_abundance <- Merge_landUses_and_intensities(dataset = diversity_all_abundance,
-                                                index = 0, 
-                                                land_uses_separate_intensities = land_uses_separate_final,
-                                                land_uses_merge_light_intense = land_uses_light_intense_final,
-                                                "Primary Minimal use")
+                                                          index = 0, 
+                                                          land_uses_separate_intensities = land_uses_separate_final,
+                                                          land_uses_merge_light_intense = land_uses_light_intense_final,
+                                                          "Primary Minimal use")
 
 # ---13.3 Test for collinearity  ----------------------------------------------------------------------
 
@@ -1243,7 +1270,7 @@ corvif(diversity_all_abundance[ , c("LandUse.0", "Kingdom")])
 
 # Create a table with complete cases
 diversity_all_abundance <- drop_na(diversity_all_abundance, 
-                         RescaledAbundance, LandUse.0) %>% droplevels()
+                                   RescaledAbundance, LandUse.0) %>% droplevels()
 
 # Check number of sites
 table(diversity_all_abundance$LandUse.0, diversity_all_abundance$Kingdom)
@@ -1256,7 +1283,7 @@ table(diversity_all_abundance$LandUse.0, diversity_all_abundance$Kingdom)
 # but I’m going to transform it in order to meet the assumptions of linear mixed models.
 
 m1_final <- lmer(logAbundance ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
-                                   (1|SS) + (1|SSB) + (1|Source_ID),
+                   (1|SS) + (1|SSB) + (1|Source_ID),
                  data = diversity_all_abundance)
 
 # test significance of fixed effects 
@@ -1283,10 +1310,10 @@ land_uses_light_intense_null1 <- "NA"
 # This function creates new columns with the land-uses and use intensities that we want, then it then merges both columns 
 # into a LanUse column
 diversity_all_abundance <- Merge_landUses_and_intensities(diversity_all_abundance, 
-                                                1,
-                                                land_uses_separate_null1, 
-                                                land_uses_light_intense_null1,
-                                                "Primary All")
+                                                          1,
+                                                          land_uses_separate_null1, 
+                                                          land_uses_light_intense_null1,
+                                                          "Primary All")
 # Check levels
 levels(diversity_all_abundance$LandUse.1)
 
@@ -1375,4 +1402,3 @@ text(x = c(0.8:10.8),
                            "Primary Light-Intense",
                            "YSV All"),
      srt = 18, cex= 0.7)
-
