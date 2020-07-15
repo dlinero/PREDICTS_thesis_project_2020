@@ -1,0 +1,149 @@
+---
+title: "Inspect pasture results"
+author: "Daniela Linero"
+date: "15/7/2020"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_chunk$set(cache = TRUE)
+knitr::opts_chunk$set(error = TRUE)
+library(knitr)
+library(kableExtra)
+```
+
+```{r load libraries, include=FALSE, warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r, include=FALSE}
+# Call the function that merges lan-uses and intensities
+source("./R/02_Statistical_Analysis_merge_LandUses_Intensities.R")
+```
+
+```{r, include=FALSE}
+# abundance 
+diversity_all_abundance <- readRDS(file = "./output/cleaned_data/02_Statistical_Analysis_Abundance_Site_metrics_combined_animals_endooPlants_notEndooPlants.rds")
+
+# Abundance
+sp_abundance <- readRDS(file = "./output/intermediate_files/02_Statistical_Analysis_Abundance_species_all.rds")
+
+```
+
+```{r}
+# Create the vectors that hold the land-uses that we want to keep with 
+# different use intensities 
+land_uses_separate <- c("Primary","Cropland", "ISV", "Plantation forest")
+
+# Create a vector with the land-uses where we want to merge the light 
+# and intense use intensities
+land_uses_light_intense <- c("Primary", "Cropland", "ISV", "Plantation forest")
+
+# Merge LUI for abundance
+diversity_all_abundance <- Merge_landUses_and_intensities(dataset = diversity_all_abundance, 
+                                                      index = 1, 
+                                                      land_uses_separate_intensities = land_uses_separate,
+                                                      land_uses_merge_light_intense = land_uses_light_intense,
+                                                      "Primary Minimal use")
+
+# Drop NA values
+diversity_abundance <- drop_na(diversity_all_abundance, 
+                              Total_abundance, LandUse.1)  %>%
+  droplevels()
+
+
+```
+
+```{r}
+# Get the SSBS of sites belonging to pasture and primary minimal use for Plants 
+
+abundance <- diversity_abundance %>% 
+  
+  # Filter LUI
+  dplyr::filter(LandUse.1 %in% c("Primary Minimal use", "Pasture All")) %>%
+  
+  # Filter plants
+  dplyr::filter(Kingdom %in% c("Plantae")) %>%
+  
+  # drop levels
+  droplevels() 
+
+# Get some statistics of abundance for both land uses
+abundance %>%
+  
+  # Group by LUI
+  group_by(LandUse.1) %>% 
+  
+  # Calculate statistics
+  summarise(mean = mean(RescaledAbundance), 
+            sd = sd(RescaledAbundance),
+            qt_1 = quantile(RescaledAbundance, prob=c(0.25)),
+            qt_2 = quantile(RescaledAbundance, prob=c(0.5)),
+            qt_3 = quantile(RescaledAbundance, prob=c(0.75)),
+            qt_4 = quantile(RescaledAbundance, prob=c(1)))
+
+
+```
+
+
+```{r}
+# I am going to check the sites that have a rescaled abundance greater than the median 
+# for pasture
+
+pasture_abundance <- abundance %>% 
+  
+  # Filter pasture
+  filter(LandUse.1 == "Pasture All") %>%
+  
+  # Filter sites with species richness greater than the median
+  filter(RescaledAbundance > 0.07) %>%
+  
+  # droplevels
+  droplevels() %>%
+  
+  pull(SSBS) %>% as.character()
+
+
+```
+
+```{r}
+pasture_abundance_inspect <- sp_abundance %>% 
+  
+  # subset the sites we want to inspect
+  base::subset(SSBS %in% pasture_abundance) %>%
+  
+  # Subset only plants dispersed by endozoochory
+  base::subset(Kingdom == "Plantae") %>%
+  
+  # drop levels
+  droplevels() %>%
+  
+  # select columns we are interested in
+  dplyr::select(Country, Source_ID, SS, Diversity_metric_type, Diversity_metric_unit,
+                Habitat_as_described, Predominant_land_use, Use_intensity, SSBS, 
+                Best_guess_binomial, Taxon_name_entered, Measurement, Kingdom) %>%
+  
+  # Select species present(1) or with abundance greater than 0
+  dplyr::filter(Measurement != 0)
+
+# Resulting number of species
+length(unique(pasture_abundance_inspect$Best_guess_binomial))
+
+# Resulting number of studies
+length(unique(pasture_abundance_inspect$SS))
+
+
+```
+
+```{r}
+abundance <- read.csv("./Abundance_inspect.csv", header = TRUE, sep = ";")
+kable(abundance, format="latex", booktabs=TRUE) %>% 
+  kable_styling(latex_options="scale_down")
+```
+
+
