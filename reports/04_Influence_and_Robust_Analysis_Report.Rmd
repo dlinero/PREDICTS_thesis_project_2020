@@ -1,0 +1,574 @@
+---
+title: "Robust analysis"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_chunk$set(cache = TRUE)
+knitr::opts_chunk$set(error = TRUE)
+library(knitr)
+```
+
+```{r, include=FALSE}
+# Load libraries
+library(influence.ME)
+library(dplyr)
+library(data.table)
+library(broom)
+library(lme4) 
+library(robustlmm)
+
+# Load the modified influence function
+source("./R/04_Analise_Influence_modified_influenceME_function.R") 
+# Add the Land use data
+# Load function to merge LUI
+source("./R/02_Statistical_Analysis_merge_LandUses_Intensities.R")
+source("./R/PlotErrBar_interactions.R")
+source("./R/PlotErrBar_interactions_modified.R")
+
+```
+
+```{r, include=FALSE}
+# Vector of the land uses where intensity levels will remain separate
+separate <- c("Primary", "Cropland", "ISV", "Plantation forest")
+
+# Vector of land uses where light and intense uses will be merged
+light_intense <- c("Primary", "Cropland", "ISV", "Plantation forest")
+```
+
+```{r, include=FALSE}
+
+# Load abundance data
+abundance <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Abundance_Site_metrics_combined_animals_endooPlants_notEndooPlants.rds")
+
+# Create the logAbundance column
+abundance <- mutate(abundance, logAbundance = log(RescaledAbundance + 1))
+
+
+
+# Merge LUI
+abundance <- Merge_landUses_and_intensities(dataset = abundance, 
+                                       index = 0, 
+                                       land_uses_separate_intensities = separate, 
+                                       land_uses_merge_light_intense = light_intense, 
+                                       reference = "Primary Minimal use")
+
+
+# Get complete cases
+abundance <- drop_na(abundance, RescaledAbundance, LandUse.0) %>% droplevels()
+
+```
+
+**Total Abundance Model**
+
+I used the influence.ME package to identify influential Source IDs. The first measured I assessed was the Cook's distance. The cut off for this measure is: 4/n, being n the number of groups, in this case 85. 
+Cut off= 0.047
+
+```{r, include=FALSE}
+# Load results of influence.ME function
+INFM1_abundance <- readRDS(file = "./output/intermediate_files/04_Analysis_influence_Abundance.Rds")
+```
+
+
+```{r, include=FALSE}
+# Make a dataframe with the results of cooks distance
+cooks_abundance <- as.data.frame(influence.ME::cooks.distance.estex(INFM1_abundance, sort = TRUE))
+# Turn Source ID into a column
+cooks_abundance <- setDT(cooks_abundance, keep.rownames = "Source_ID")
+# Select the values of all columns that are greater for the cut off
+cook_sources_abundance <- cooks_abundance %>% filter(V1 > 0.05) %>% droplevels
+
+```
+
+
+```{r }
+# Count number of source IDs that are greater than the cut off
+length(cook_sources_abundance$Source_ID)
+```
+
+
+```{r}
+# Plot the results 
+influence.ME::plot.estex(x=INFM1_abundance, which = "cook", cutoff = 0.047)
+```
+
+The second measure I assessed was the DFBETAS. The cut off for this measure is: 2/sqrt(n), being n the number of groups, in this case 85. 
+Cut off= 0.217
+
+```{r, include=FALSE}
+# Make a dataframe with the results of dfbetas
+dfbetas_abundance <- as.data.frame(influence.ME::dfbetas.estex(INFM1_abundance))
+# Turn Source ID into a column
+dfbetas_abundance <- setDT(dfbetas_abundance, keep.rownames = "Source_ID")
+# Select the values of all columns that are greater for the cut off
+dfbetas_sources_abundance <-dfbetas_abundance %>%  
+  filter_if(is.numeric, any_vars(. > 0.22))
+```
+
+
+```{r }
+# Count number of source IDs that are greater than the cut off for any parameter
+length(dfbetas_sources_abundance$Source_ID)
+```
+
+**Species Richness model**
+
+Cut off Cook's distance = 4/84 = 0.048
+
+
+```{r, include=FALSE}
+
+# Load species richness data
+sp_richness <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Richness_Site_metrics_animals_endooPlants_notendooPlants.rds")
+
+
+# Merge LUI
+sp_richness <- Merge_landUses_and_intensities(dataset = sp_richness, 
+                                       index = 0, 
+                                       land_uses_separate_intensities = separate, 
+                                       land_uses_merge_light_intense = light_intense, 
+                                       reference = "Primary Minimal use")
+
+
+# Get complete cases
+sp_richness <- drop_na(sp_richness, 
+                         Species_richness, LandUse.0) %>% droplevels()
+
+```
+
+
+```{r, include=FALSE}
+# Load results of influence.ME function
+INFM1_richness <- readRDS(file = "./output/intermediate_files/04_Analysis_influence_Species_richness.Rds")
+
+```
+
+
+```{r, include=FALSE}
+
+# Make a dataframe with the results of cooks distance
+cook_richness <- as.data.frame(influence.ME::cooks.distance.estex(INFM1_richness, sort = TRUE))
+# Turn Source ID into a column
+cook_richness <- setDT(cook_richness, keep.rownames = "Source_ID")
+# Select the values of all columns that are greater for the cut off
+cook_sources_richness <- cook_richness %>% filter(V1 > 0.05) %>% droplevels
+
+```
+
+
+```{r}
+# Count number of source IDs that are greater than the cut off
+length(cook_sources_richness$Source_ID)
+```
+
+
+```{r E}
+# Plot the results 
+influence.ME::plot.estex(x=INFM1_richness, which = "cook", cutoff = 0.05)
+```
+
+Cut off DFBETAS = 2/sqrt(84) = 0.22
+
+```{r, include=FALSE}
+# Make a dataframe with the results of dfbetas
+dfbetas_richness <- as.data.frame(influence.ME::dfbetas.estex(INFM1_richness))
+# Turn Source ID into a column
+dfbetas_richness <- setDT(dfbetas_richness, keep.rownames = "Source_ID")
+# Select the values of all columns that are greater for the cut off
+dfbetas_sources_richness <-dfbetas_richness %>%  
+  filter_if(is.numeric, any_vars(. > 0.22))
+```
+
+
+```{r }
+# Count number of source IDs that are greater than the cut off
+length(dfbetas_sources_richness$Source_ID)
+```
+
+
+**Simpson's diversity**
+
+Cut off Cook's distance = 4/73 = 0.055
+
+
+```{r, include=FALSE}
+# Load species richness data
+simpson <- readRDS("./output/cleaned_data/02_Statistical_Analysis_Simpson_Site_metrics_animals_endooPlants_notendooPlants.rds")
+
+# Merge LUI
+simpson <- Merge_landUses_and_intensities(dataset = simpson, 
+                                              index = 0, 
+                                              land_uses_separate_intensities = separate, 
+                                              land_uses_merge_light_intense = light_intense, 
+                                              reference = "Primary Minimal use")
+
+
+# Get complete cases
+simpson <- drop_na(simpson, 
+                       Simpson_diversity, LandUse.0) %>% droplevels()
+
+# Transform Simpson's diversity index
+simpson  <- simpson  %>%
+  
+  # Create a new column to transform the response variable with log
+  mutate(log_one_over_D = log(Simpson_diversity))
+
+
+```
+
+
+```{r, include=FALSE}
+# Load results of influence.ME function
+INFM1_simpson <- readRDS(file = "./output/intermediate_files/04_Analysis_influence_Simpson.Rds")
+
+
+```
+
+
+```{r, include=FALSE}
+
+cook_simpson <- as.data.frame(influence.ME::cooks.distance.estex(INFM1_simpson, sort = TRUE))
+# Turn Source ID into a column
+cook_simpson <- setDT(cook_simpson, keep.rownames = "Source_ID")
+# Select the values of all columns that are greater for the cut off
+cook_sources_simpson <- cook_simpson %>% filter(V1 > 0.06) %>% droplevels
+
+```
+
+
+```{r }
+# Count number of source IDs that are greater than the cut off
+length(cook_sources_simpson$Source_ID)
+```
+
+
+```{r }
+# Plot the results 
+influence.ME::plot.estex(x=INFM1_simpson, which = "cook", cutoff = 0.06)
+
+```
+
+Cut off DFBETAS = 2/sqrt(73) = 0.23
+
+```{r, include=FALSE}
+dfbetas_simpson <- as.data.frame(influence.ME::dfbetas.estex(INFM1_simpson))
+# Turn Source ID into a column
+dfbetas_simpson <- setDT(dfbetas_simpson, keep.rownames = "Source_ID")
+# Select the values of all columns that are greater for the cut off
+dfbetas_sources_simpson <-dfbetas_simpson %>%  
+  filter_if(is.numeric, any_vars(. > 0.23))
+
+```
+
+
+```{r}
+# Count number of source IDs that are greater than the cut off
+length(dfbetas_sources_simpson$Source_ID)
+```
+
+*Robust analysis*
+
+**Total abundance model**
+
+```{r}
+# Run the original model
+full_model_abundance <- lmer(logAbundance ~ LandUse.0 + Kingdom + LandUse.0*Kingdom +
+                               (1|Source_ID) + (1|SS) + (1|SSB), data= abundance)
+```
+
+
+```{r}
+
+# Run the robust analysis
+full_model_abundance_robust <- rlmer(logAbundance ~ LandUse.0 + Kingdom + LandUse.0*Kingdom +
+                                       (1|Source_ID) + (1|SS) + (1|SSB), data = abundance)
+```
+
+Residuals of the robust model
+
+```{r}
+plot(full_model_abundance_robust)[1]
+```
+
+
+```{r}
+plot(full_model_abundance_robust)[2]
+```
+
+
+```{r}
+# Get the robustness weights for the sites
+we_abundance <- getME(full_model_abundance_robust, "w_e")
+# histogram of the robustness weights of sites
+histogram(we_abundance)
+```
+
+Results of both models:
+
+Original model
+
+```{r,  echo=FALSE}
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = full_model_abundance,
+                             resp = "log(Rescaled Abundance)",
+                             Effect1 = "LandUse.0", 
+                             Effect2 = "Kingdom",
+                             ylims = c(-0.25, 0.3),
+                             pointtype = c(16,17, 18),
+                             blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), 
+     y = -0.2, labels = c("Primary Minimal",
+                          "Cropland Light-Intense",
+                          "Cropland Minimal",
+                          "ISV Light-Intense",
+                          "ISV Minimal",
+                          "MSV All",
+                          "Pasture All",
+                          "Plantation Light-Intense",
+                          "Plantation Minimal",
+                          "Primary Light-Intense",
+                          "YSV All"),
+     srt = 18, cex= 0.5)
+
+```
+
+Robust model
+
+```{r,  echo=FALSE}
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = full_model_abundance_robust,
+                             resp = "log(Rescaled Abundance)",
+                             Effect1 = "LandUse.0", 
+                             Effect2 = "Kingdom",
+                             ylims = c(-0.25, 0.3),
+                             pointtype = c(16,17, 18),
+                             blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), 
+     y = -0.2, labels = c("Primary Minimal",
+                          "Cropland Light-Intense",
+                          "Cropland Minimal",
+                          "ISV Light-Intense",
+                          "ISV Minimal",
+                          "MSV All",
+                          "Pasture All",
+                          "Plantation Light-Intense",
+                          "Plantation Minimal",
+                          "Primary Light-Intense",
+                          "YSV All"),
+     srt = 18, cex= 0.5)
+
+```
+
+
+**Species Richness model**
+
+```{r}
+# Run the original model
+full_model_richness <- glmer(Species_richness ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
+                               (1|Source_ID) + (1|SS) + (1|SSB) + (1|SSBS), 
+                             data = sp_richness, family = poisson, 
+                             control = 
+                               glmerControl(optimizer = "bobyqa", 
+                                            optCtrl = list(maxfun = 20000)))
+```
+
+
+```{r}
+
+# Run the robust analysis:
+# Since the package only works for gaussian family, I'm going to model sp. richness as log(sp. richness + 1) 
+# Create the logAbundance column
+sp_richness <- mutate(sp_richness, logRichness = log(Species_richness + 1))
+
+```
+
+
+```{r}
+
+full_model_richness_robust <- rlmer(logRichness ~ LandUse.0 + Kingdom + LandUse.0*Kingdom +
+                                      (1|Source_ID) + (1|SS) + (1|SSB), data = sp_richness)
+```
+
+Residuals of the robust model
+
+```{r}
+plot(full_model_richness_robust)[1]
+```
+
+
+```{r}
+plot(full_model_richness_robust)[2]
+```
+
+
+```{r}
+# Get the robustness weights for the sites
+we_richness <- getME(full_model_richness_robust, "w_e")
+# histogram of the robustness weights of sites
+histogram(we_richness)
+```
+
+Results of both models:
+
+Original model
+
+```{r,  echo=FALSE}
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = full_model_richness,
+                             resp = "log(Species Richness)",
+                             Effect1 = "LandUse.0", 
+                             Effect2 = "Kingdom",
+                             ylims = c(-3, 2),
+                             pointtype = c(16,17, 18),
+                             blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), 
+     y = -3, labels = c("Primary Minimal",
+                        "Cropland Light-Intense",
+                        "Cropland Minimal",
+                        "ISV Light-Intense",
+                        "ISV Minimal",
+                        "MSV All",
+                        "Pasture All",
+                        "Plantation Light-Intense",
+                        "Plantation Minimal",
+                        "Primary Light-Intense",
+                        "YSV All"),
+     srt = 18, cex= 0.5)
+```
+
+Robust model
+
+```{r,  echo=FALSE}
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = full_model_richness_robust,
+                             resp = "log(Species Richness)",
+                             Effect1 = "LandUse.0", 
+                             Effect2 = "Kingdom",
+                             ylims = c(-3, 2),
+                             pointtype = c(16,17, 18),
+                             blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), 
+     y = -3, labels = c("Primary Minimal",
+                        "Cropland Light-Intense",
+                        "Cropland Minimal",
+                        "ISV Light-Intense",
+                        "ISV Minimal",
+                        "MSV All",
+                        "Pasture All",
+                        "Plantation Light-Intense",
+                        "Plantation Minimal",
+                        "Primary Light-Intense",
+                        "YSV All"),
+     srt = 18, cex= 0.5)
+
+```
+
+**Simpson's diversity model**
+
+```{r}
+# Run the original model
+full_model_simpson <- lmer(log_one_over_D ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
+                             (1|Source_ID) + (1|SS) + (1|SSB),
+                           data = simpson)
+```
+
+
+```{r}
+
+# Run the robust analysis:
+full_model_simpson_robust <- rlmer(log_one_over_D ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
+                                     (1|Source_ID) + (1|SS) + (1|SSB),
+                                   data = simpson)
+
+```
+
+
+Residuals of the robust model
+
+```{r}
+plot(full_model_simpson_robust)[1]
+```
+
+
+```{r}
+plot(full_model_simpson_robust)[2]
+```
+
+
+```{r}
+# Get the robustness weights for the sites
+we_simpson <- getME(full_model_simpson_robust, "w_e")
+# histogram of the robustness weights of sites
+histogram(we_simpson)
+```
+
+Results of both models:
+
+Original model
+
+```{r,  echo=FALSE}
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = full_model_simpson,
+                             resp = "log(Simpson's diversity index)",
+                             Effect1 = "LandUse.0", 
+                             Effect2 = "Kingdom",
+                             ylims = c(-1, 1),
+                             pointtype = c(16,17, 18),
+                             blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), 
+     y = -1, labels = c("Primary Minimal",
+                        "Cropland Light-Intense",
+                        "Cropland Minimal",
+                        "ISV Light-Intense",
+                        "ISV Minimal",
+                        "MSV All",
+                        "Pasture All",
+                        "Plantation Light-Intense",
+                        "Plantation Minimal",
+                        "Primary Light-Intense",
+                        "YSV All"),
+     srt = 18, cex= 0.5)
+
+```
+
+Robust model
+
+```{r,  echo=FALSE}
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = full_model_simpson_robust,
+                             resp = "log(Simpson's diversity index)",
+                             Effect1 = "LandUse.0", 
+                             Effect2 = "Kingdom",
+                             ylims = c(-1, 1),
+                             pointtype = c(16,17, 18),
+                             blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), 
+     y = -1, labels = c("Primary Minimal",
+                        "Cropland Light-Intense",
+                        "Cropland Minimal",
+                        "ISV Light-Intense",
+                        "ISV Minimal",
+                        "MSV All",
+                        "Pasture All",
+                        "Plantation Light-Intense",
+                        "Plantation Minimal",
+                        "Primary Light-Intense",
+                        "YSV All"),
+     srt = 18, cex= 0.5)
+
+
+```
