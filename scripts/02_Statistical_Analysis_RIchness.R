@@ -712,6 +712,21 @@ diversity_all <- drop_na(diversity_all,
 # Check number of sites
 table(diversity_all$LandUse.0, diversity_all$Kingdom)
 
+# Organize levels of LUI
+diversity_all$LandUse.0 <- factor(diversity_all$LandUse.0, 
+                                            levels = c("Primary Minimal use",
+                                                       "Primary Light-intense use",
+                                                       "MSV All",
+                                                       "ISV Minimal use",
+                                                       "ISV Light-intense use",
+                                                       "YSV All",
+                                                       "Plantation forest Minimal use",
+                                                       "Plantation forest Light-intense use",
+                                                       "Pasture All",
+                                                       "Cropland Minimal use",
+                                                       "Cropland Light-intense use"))
+
+
 # ---14.5. Choose between GLMM or LMM -----------------------------------------------------------------
  
 # Species richness was modelled with Poisson error distribution and log-link function;
@@ -845,32 +860,37 @@ source("./R/PlotErrBar_interactions_modified.R")
 
 # Check the order of the plot labels
 PlotErrBar_interactions(model = m2_final, resp = "Species richness", Effect1 = "LandUse.0", Effect2 = "Kingdom",
-                        ylims = c(-3,2.5), pointtype = c(16,17,18),blackwhite = FALSE)
+                        ylims = c(-3,3), pointtype = c(16,17,18),blackwhite = FALSE)
+
+# Export pdf with the graph
+pdf(file = "./output/figures/02_Statistical_Analysis_Richness_model_results.pdf", width = 10)
 
 
 # Plot the differences between estimates 
 PlotErrBar_interactions_modi(model = m2_final,
-                             resp = "Species Richness",
+                             resp = "log(Species Richness)",
                              Effect1 = "LandUse.0", 
                              Effect2 = "Kingdom",
-                             ylims = c(-3,2.5),
+                             ylims = c(-3,3),
                              pointtype = c(16,17, 18),
                              blackwhite = FALSE)
 
 # Plot the x label
 text(x = c(0.8:10.8), 
-     y = -3, labels = c("Primary Minimal",
-                        "Cropland Light-Intense",
-                        "Cropland Minimal",
-                        "ISV Light-Intense",
-                        "ISV Minimal",
+     y = -3, labels = c("Primary Minimal use",
+                        "Primary Light-intense use",
                         "MSV All",
+                        "ISV Minimal use",
+                        "ISV Light-intense use",
+                        "YSV All",
+                        "Plantation forest Minimal use",
+                        "Plantation forest Light-intense use",
                         "Pasture All",
-                        "Plantation Light-Intense",
-                        "Plantation Minimal",
-                        "Primary Light-Intense",
-                        "YSV All"),
+                        "Cropland Minimal use",
+                        "Cropland Light-intense use"),
      srt = 18, cex= 0.7)
 
 
+# Clear 
+dev.off()
 

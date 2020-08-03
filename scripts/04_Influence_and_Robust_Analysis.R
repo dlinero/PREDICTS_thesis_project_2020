@@ -88,10 +88,10 @@ abundance <- mutate(abundance, logAbundance = log(RescaledAbundance + 1))
 source("./R/02_Statistical_Analysis_merge_LandUses_Intensities.R") 
 
 # Vector of the land uses where intensity levels will remain separate
-land_uses_separate <- c("Primary", "Cropland", "ISV", "Plantation Forest")
+land_uses_separate <- c("Primary", "Cropland", "ISV", "Plantation forest")
 
 # Vector of land uses where light and intense uses will be merged
-land_uses_light_intense <- c("Primary", "Cropland", "ISV", "Plantation Forest")
+land_uses_light_intense <- c("Primary", "Cropland", "ISV", "Plantation forest")
 
 # Merge LUI
 abundance <- Merge_landUses_and_intensities(dataset = abundance, 
@@ -103,6 +103,20 @@ abundance <- Merge_landUses_and_intensities(dataset = abundance,
 
 # Get complete cases
 abundance <- drop_na(abundance, RescaledAbundance, LandUse.0) %>% droplevels()
+
+# Organize levels of LUI
+abundance$LandUse.0 <- factor(abundance$LandUse.0, 
+                                          levels = c("Primary Minimal use",
+                                                     "Primary Light-intense use",
+                                                     "MSV All",
+                                                     "ISV Minimal use",
+                                                     "ISV Light-intense use",
+                                                     "YSV All",
+                                                     "Plantation forest Minimal use",
+                                                     "Plantation forest Light-intense use",
+                                                     "Pasture All",
+                                                     "Cropland Minimal use",
+                                                     "Cropland Light-intense use"))
 
 # Run model
 full_model_abundance <- lmer(logAbundance ~ LandUse.0 + Kingdom + LandUse.0*Kingdom +
@@ -245,6 +259,20 @@ sp_richness <- Merge_landUses_and_intensities(dataset = sp_richness,
 # Get complete cases
 sp_richness <- drop_na(sp_richness, 
                          Species_richness, LandUse.0) %>% droplevels()
+# Organize levels of LUI
+sp_richness$LandUse.0 <- factor(sp_richness$LandUse.0, 
+                                levels = c("Primary Minimal use",
+                                           "Primary Light-intense use",
+                                           "MSV All",
+                                           "ISV Minimal use",
+                                           "ISV Light-intense use",
+                                           "YSV All",
+                                           "Plantation forest Minimal use",
+                                           "Plantation forest Light-intense use",
+                                           "Pasture All",
+                                           "Cropland Minimal use",
+                                           "Cropland Light-intense use"
+                                ))
 
 # Run model
 full_model_richness <- glmer(Species_richness ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
@@ -353,6 +381,21 @@ simpson  <- simpson  %>%
   
   # Create a new column to transform the response variable with log
   mutate(log_one_over_D = log(Simpson_diversity))
+
+# Organize levels of LUI
+simpson$LandUse.0 <- factor(simpson$LandUse.0, 
+                            levels = c("Primary Minimal use",
+                                       "Primary Light-intense use",
+                                       "MSV All",
+                                       "ISV Minimal use",
+                                       "ISV Light-intense use",
+                                       "YSV All",
+                                       "Plantation forest Minimal use",
+                                       "Plantation forest Light-intense use",
+                                       "Pasture All",
+                                       "Cropland Minimal use",
+                                       "Cropland Light-intense use"
+                            ))
 
 # Run model
 full_model_simpson <- lmer(log_one_over_D ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
@@ -932,9 +975,13 @@ summary(full_model_abundance_robust)
 source("./R/PlotErrBar_interactions.R")
 source("./R/PlotErrBar_interactions_modified.R")
 
+
+# Export pdf with the graph
+pdf(file = "./output/figures/04_Influence_and_Robust_Analysis_Abundance_results.pdf", width = 10)
+
 # Plot the differences between estimates 
 PlotErrBar_interactions_modi(model = full_model_abundance_robust,
-                             resp = "Abundance",
+                             resp = "log(Total abundance + 1)",
                              Effect1 = "LandUse.0", 
                              Effect2 = "Kingdom",
                              ylims = c(-0.25, 0.3),
@@ -943,18 +990,22 @@ PlotErrBar_interactions_modi(model = full_model_abundance_robust,
 
 # Plot the x label
 text(x = c(0.8:10.8), 
-     y = -0.2, labels = c("Primary Minimal",
-                          "Cropland Light-Intense",
-                          "Cropland Minimal",
-                          "ISV Light-Intense",
-                          "ISV Minimal",
-                          "MSV All",
-                          "Pasture All",
-                          "Plantation Light-Intense",
-                          "Plantation Minimal",
-                          "Primary Light-Intense",
-                          "YSV All"),
+     y = -0.18, labels = c("Primary Minimal use",
+                           "Primary Light-intense use",
+                           "MSV All",
+                           "ISV Minimal use",
+                           "ISV Light-intense use",
+                           "YSV All",
+                           "Plantation forest Minimal use",
+                           "Plantation forest Light-intense use",
+                           "Pasture All",
+                           "Cropland Minimal use",
+                           "Cropland Light-intense use"),
      srt = 18, cex= 0.7)
+
+
+# Clear 
+dev.off()
 
 
 # ------------------------------------- Sp. richness -------------------------------------------------
@@ -998,29 +1049,36 @@ summary(full_model_richness_robust)
 source("./R/PlotErrBar_interactions.R")
 source("./R/PlotErrBar_interactions_modified.R")
 
+# Export pdf with the graph
+pdf(file = "./output/figures/04_Influence_and_Robust_Analysis_Species_Richness_results.pdf", width = 10)
+
 # Plot the differences between estimates 
 PlotErrBar_interactions_modi(model = full_model_richness_robust,
-                             resp = "Richness",
+                             resp = "log(Species Richness + 1)",
                              Effect1 = "LandUse.0", 
                              Effect2 = "Kingdom",
-                             ylims = c(-3, 2),
+                             ylims = c(-1, 1),
                              pointtype = c(16,17, 18),
                              blackwhite = FALSE)
 
 # Plot the x label
 text(x = c(0.8:10.8), 
-     y = -3, labels = c("Primary Minimal",
-                        "Cropland Light-Intense",
-                        "Cropland Minimal",
-                        "ISV Light-Intense",
-                        "ISV Minimal",
+     y = -1, labels = c("Primary Minimal use",
+                        "Primary Light-intense use",
                         "MSV All",
+                        "ISV Minimal use",
+                        "ISV Light-intense use",
+                        "YSV All",
+                        "Plantation forest Minimal use",
+                        "Plantation forest Light-intense use",
                         "Pasture All",
-                        "Plantation Light-Intense",
-                        "Plantation Minimal",
-                        "Primary Light-Intense",
-                        "YSV All"),
+                        "Cropland Minimal use",
+                        "Cropland Light-intense use"),
      srt = 18, cex= 0.7)
+
+# Clear
+dev.off()
+
 
 # ------------------------------------- Simpson diversity -------------------------------------------------
 
@@ -1059,9 +1117,13 @@ summary(full_model_simpson_robust)
 source("./R/PlotErrBar_interactions.R")
 source("./R/PlotErrBar_interactions_modified.R")
 
+# Export pdf with the graph
+pdf(file = "./output/figures/04_Influence_and_Robust_Analysis_Simpson_results.pdf", width = 10)
+
+
 # Plot the differences between estimates 
 PlotErrBar_interactions_modi(model = full_model_simpson_robust,
-                             resp = "Simpson",
+                             resp = "log (Simpson's diversity)",
                              Effect1 = "LandUse.0", 
                              Effect2 = "Kingdom",
                              ylims = c(-1, 1),
@@ -1070,16 +1132,18 @@ PlotErrBar_interactions_modi(model = full_model_simpson_robust,
 
 # Plot the x label
 text(x = c(0.8:10.8), 
-     y = -1, labels = c("Primary Minimal",
-                        "Cropland Light-Intense",
-                        "Cropland Minimal",
-                        "ISV Light-Intense",
-                        "ISV Minimal",
+     y = -1, labels = c("Primary Minimal use",
+                        "Primary Light-intense use",
                         "MSV All",
+                        "ISV Minimal use",
+                        "ISV Light-intense use",
+                        "YSV All",
+                        "Plantation forest Minimal use",
+                        "Plantation forest Light-intense use",
                         "Pasture All",
-                        "Plantation Light-Intense",
-                        "Plantation Minimal",
-                        "Primary Light-Intense",
-                        "YSV All"),
+                        "Cropland Minimal use",
+                        "Cropland Light-intense use"),
      srt = 18, cex= 0.7)
 
+# Clear
+dev.off()

@@ -4,7 +4,6 @@ rm(list = ls())
 # Load libraries
 library(yarg) # useful functions for dealing with PREDICTS data
 library(roquefort) # useful PREDICTS functions, particularly for plotting
-library(raster) # for dealing with spatial data
 library(dplyr) # for handy data manipulation functions
 library(tidyr) # ditto
 library(lme4) # for mixed effects models
@@ -12,7 +11,7 @@ library(car) # for getting anova tables with significance values
 library(DHARMa) # for model criticism plots
 library(MuMIn) # for checking explanatory power of mixed effects models
 library(stringr) # to replace text
-library(lmerTest) # to get p-values for estimates in LMMs
+
 
 # ---- Description --------------------------------------------------------------------
 
@@ -1275,6 +1274,20 @@ diversity_all_abundance <- drop_na(diversity_all_abundance,
 # Check number of sites
 table(diversity_all_abundance$LandUse.0, diversity_all_abundance$Kingdom)
 
+# Organize levels of LUI
+diversity_all_abundance$LandUse.0 <- factor(diversity_all_abundance$LandUse.0, 
+                                            levels = c("Primary Minimal use",
+                                                       "Primary Light-intense use",
+                                                       "MSV All",
+                                                       "ISV Minimal use",
+                                                       "ISV Light-intense use",
+                                                       "YSV All",
+                                                       "Plantation forest Minimal use",
+                                                       "Plantation forest Light-intense use",
+                                                       "Pasture All",
+                                                       "Cropland Minimal use",
+                                                       "Cropland Light-intense use"))
+
 # ---13.5. Model with log: -------------------------------------------------------------- 
 
 # Abundance data usually has a nonnormal error distribution because it has a positive mean-variance
@@ -1318,7 +1331,7 @@ diversity_all_abundance <- Merge_landUses_and_intensities(diversity_all_abundanc
 levels(diversity_all_abundance$LandUse.1)
 
 
-# Model richness with those land-use classes
+# Model abundance with those land-use classes
 m2_final <- lmer(logAbundance ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
                    (1|Source_ID) + (1|SS) + (1|SSB),
                  data = diversity_all_abundance)
@@ -1376,12 +1389,14 @@ source("./R/PlotErrBar_interactions_modified.R")
 
 # Check the order of the plot labels
 PlotErrBar_interactions(model = m1_final, resp = "Species richness", Effect1 = "LandUse.0", Effect2 = "Kingdom",
-                        ylims = c(-3,2.5), pointtype = c(16,17,18),blackwhite = FALSE)
+                        ylims = c(-0.2,0.25), pointtype = c(16,17,18),blackwhite = FALSE)
 
+# Export pdf with the graph
+pdf(file = "./output/figures/02_Statistical_Analysis_Abundance_model_results.pdf", width = 10)
 
 # Plot the differences between estimates 
 PlotErrBar_interactions_modi(model = m1_final,
-                             resp = "Rescaled total abundance",
+                             resp = "log(Total abundance + 1)",
                              Effect1 = "LandUse.0", 
                              Effect2 = "Kingdom",
                              ylims = c(-0.2, 0.3),
@@ -1390,15 +1405,19 @@ PlotErrBar_interactions_modi(model = m1_final,
 
 # Plot the x label
 text(x = c(0.8:10.8), 
-     y = -0.18, labels = c("Primary Minimal",
-                           "Cropland Light-Intense",
-                           "Cropland Minimal",
-                           "ISV Light-Intense",
-                           "ISV Minimal",
+     y = -0.18, labels = c("Primary Minimal use",
+                           "Primary Light-intense use",
                            "MSV All",
+                           "ISV Minimal use",
+                           "ISV Light-intense use",
+                           "YSV All",
+                           "Plantation forest Minimal use",
+                           "Plantation forest Light-intense use",
                            "Pasture All",
-                           "Plantation Light-Intense",
-                           "Plantation Minimal",
-                           "Primary Light-Intense",
-                           "YSV All"),
+                           "Cropland Minimal use",
+                           "Cropland Light-intense use"),
      srt = 18, cex= 0.7)
+
+
+# Clear 
+dev.off()

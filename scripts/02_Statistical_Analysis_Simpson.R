@@ -458,6 +458,20 @@ diversity_all_simpson <- drop_na(diversity_all_simpson,
 # Check number of sites
 table(diversity_all_simpson$LandUse.0, diversity_all_simpson$Kingdom)
 
+# Organize levels of LUI
+diversity_all_simpson$LandUse.0 <- factor(diversity_all_simpson$LandUse.0, 
+                                  levels = c("Primary Minimal use",
+                                             "Primary Light-intense use",
+                                             "MSV All",
+                                             "ISV Minimal use",
+                                             "ISV Light-intense use",
+                                             "YSV All",
+                                             "Plantation forest Minimal use",
+                                             "Plantation forest Light-intense use",
+                                             "Pasture All",
+                                             "Cropland Minimal use",
+                                             "Cropland Light-intense use"))
+
 # ---15.4 Model with log: -------------------------------------------------------------- 
 
 # I will log 1/D because otherwise the model does not converge
@@ -555,12 +569,15 @@ source("./R/PlotErrBar_interactions_modified.R")
 
 # Check the order of the plot labels
 PlotErrBar_interactions(model = m1_final, resp = "Simpson's diversity index", Effect1 = "LandUse.0", Effect2 = "Kingdom",
-                        ylims = c(-3,2.5), pointtype = c(16,17,18),blackwhite = FALSE)
+                        ylims = c(-1,1), pointtype = c(16,17,18),blackwhite = FALSE)
+
+# Export pdf with the graph
+pdf(file = "./output/figures/02_Statistical_Analysis_Simpson_model_results.pdf", width = 10)
 
 
 # Plot the differences between estimates 
 PlotErrBar_interactions_modi(model = m1_final,
-                             resp = "Simpson's diversity index",
+                             resp = "log(Simpson's diversity)",
                              Effect1 = "LandUse.0", 
                              Effect2 = "Kingdom",
                              ylims = c(-1, 1),
@@ -569,15 +586,18 @@ PlotErrBar_interactions_modi(model = m1_final,
 
 # Plot the x label
 text(x = c(0.8:10.8), 
-     y = -0.9, labels = c("Primary Minimal",
-                          "Cropland Light-Intense",
-                          "Cropland Minimal",
-                          "ISV Light-Intense",
-                          "ISV Minimal",
+     y = -0.9, labels = c("Primary Minimal use",
+                          "Primary Light-intense use",
                           "MSV All",
+                          "ISV Minimal use",
+                          "ISV Light-intense use",
+                          "YSV All",
+                          "Plantation forest Minimal use",
+                          "Plantation forest Light-intense use",
                           "Pasture All",
-                          "Plantation Light-Intense",
-                          "Plantation Minimal",
-                          "Primary Light-Intense",
-                          "YSV All"),
+                          "Cropland Minimal use",
+                          "Cropland Light-intense use"),
      srt = 18, cex= 0.7)
+
+# Clear 
+dev.off()
