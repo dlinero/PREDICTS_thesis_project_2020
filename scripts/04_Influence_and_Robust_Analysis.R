@@ -1023,6 +1023,10 @@ sp_richness <- mutate(sp_richness, logRichness = log(Species_richness + 1))
 
 full_model_richness_robust <- rlmer(logRichness ~ LandUse.0 + Kingdom + LandUse.0*Kingdom +
                                       (1|Source_ID) + (1|SS) + (1|SSB), data = sp_richness)
+# Run the lme4 model but with log
+full_model_richness_log <- lmer(logRichness ~ LandUse.0 + Kingdom + LandUse.0*Kingdom +
+                                      (1|Source_ID) + (1|SS) + (1|SSB), data = sp_richness)
+
 
 # Plot the residuals
 plot(full_model_richness_robust)
@@ -1057,13 +1061,43 @@ PlotErrBar_interactions_modi(model = full_model_richness_robust,
                              resp = "log(Species Richness + 1)",
                              Effect1 = "LandUse.0", 
                              Effect2 = "Kingdom",
-                             ylims = c(-1, 1),
+                             ylims = c(-3, 3),
                              pointtype = c(16,17, 18),
                              blackwhite = FALSE)
 
 # Plot the x label
 text(x = c(0.8:10.8), 
-     y = -1, labels = c("Primary Minimal use",
+     y = -3, labels = c("Primary Minimal use",
+                        "Primary Light-intense use",
+                        "MSV All",
+                        "ISV Minimal use",
+                        "ISV Light-intense use",
+                        "YSV All",
+                        "Plantation forest Minimal use",
+                        "Plantation forest Light-intense use",
+                        "Pasture All",
+                        "Cropland Minimal use",
+                        "Cropland Light-intense use"),
+     srt = 18, cex= 0.7)
+
+# Clear
+dev.off()
+
+# Export pdf with the log graph
+pdf(file = "./output/figures/04_Influence_and_Robust_Analysis_Species_Richness_results_log.pdf", width = 10)
+
+# Plot the differences between estimates 
+PlotErrBar_interactions_modi(model = full_model_richness_log,
+                             resp = "log(Species Richness + 1)",
+                             Effect1 = "LandUse.0", 
+                             Effect2 = "Kingdom",
+                             ylims = c(-3, 3),
+                             pointtype = c(16,17, 18),
+                             blackwhite = FALSE)
+
+# Plot the x label
+text(x = c(0.8:10.8), 
+     y = -3, labels = c("Primary Minimal use",
                         "Primary Light-intense use",
                         "MSV All",
                         "ISV Minimal use",
