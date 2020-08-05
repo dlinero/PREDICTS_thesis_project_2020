@@ -977,7 +977,7 @@ source("./R/PlotErrBar_interactions_modified.R")
 
 
 # Export pdf with the graph
-pdf(file = "./output/figures/04_Influence_and_Robust_Analysis_Abundance_results.pdf", width = 10)
+pdf(file = "./output/graphs_tables/04_Influence_and_Robust_Analysis_Abundance_results.pdf", width = 10)
 
 # Plot the differences between estimates 
 PlotErrBar_interactions_modi(model = full_model_abundance_robust,
@@ -1054,7 +1054,7 @@ source("./R/PlotErrBar_interactions.R")
 source("./R/PlotErrBar_interactions_modified.R")
 
 # Export pdf with the graph
-pdf(file = "./output/figures/04_Influence_and_Robust_Analysis_Species_Richness_results.pdf", width = 10)
+pdf(file = "./output/graphs_tables/04_Influence_and_Robust_Analysis_Species_Richness_results.pdf", width = 10)
 
 # Plot the differences between estimates 
 PlotErrBar_interactions_modi(model = full_model_richness_robust,
@@ -1084,7 +1084,7 @@ text(x = c(0.8:10.8),
 dev.off()
 
 # Export pdf with the log graph
-pdf(file = "./output/figures/04_Influence_and_Robust_Analysis_Species_Richness_results_log.pdf", width = 10)
+pdf(file = "./output/graphs_tables/04_Influence_and_Robust_Analysis_Species_Richness_results_log.pdf", width = 10)
 
 # Plot the differences between estimates 
 PlotErrBar_interactions_modi(model = full_model_richness_log,
@@ -1152,7 +1152,7 @@ source("./R/PlotErrBar_interactions.R")
 source("./R/PlotErrBar_interactions_modified.R")
 
 # Export pdf with the graph
-pdf(file = "./output/figures/04_Influence_and_Robust_Analysis_Simpson_results.pdf", width = 10)
+pdf(file = "./output/graphs_tables/04_Influence_and_Robust_Analysis_Simpson_results.pdf", width = 10)
 
 
 # Plot the differences between estimates 

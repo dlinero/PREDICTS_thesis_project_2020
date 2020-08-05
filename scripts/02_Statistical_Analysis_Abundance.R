@@ -1272,7 +1272,46 @@ diversity_all_abundance <- drop_na(diversity_all_abundance,
                                    RescaledAbundance, LandUse.0) %>% droplevels()
 
 # Check number of sites
+table(diversity_all_abundance$LandUse.0)
 table(diversity_all_abundance$LandUse.0, diversity_all_abundance$Kingdom)
+
+# Check number of studies per land-use
+diversity_all_abundance %>%
+  
+  # Group by land use
+  group_by(LandUse.0) %>% 
+  
+  # Calculate number of unique studies
+  summarise(n_studies = length(unique(SS)))
+
+# Check number of species per land-use
+# Merge the tables that have been already filtered, corrected and merged
+species <- readRDS(file = "./output/intermediate_files/02_Statistical_Analysis_Abundance_species_all.rds")
+
+# Extract the sites that we use in the model
+# Create a character vector of unique SSBS that we use in the model
+list <- as.character(unique(diversity_all_abundance$SSBS))
+
+# Extract sites
+species <- species %>% subset(SSBS %in% list) %>% droplevels()
+
+species <- Merge_landUses_and_intensities(dataset = species,
+                                          index = 0, 
+                                          land_uses_separate_intensities = land_uses_separate_final,
+                                          land_uses_merge_light_intense = land_uses_light_intense_final,
+                                          "Primary Minimal use")
+
+# Count number of species
+species %>%
+  
+  # Group by land use
+  group_by(LandUse.0) %>% 
+  
+  # Calculate number of unique species
+  summarise(n_sp = length(unique(Best_guess_binomial)))
+
+
+
 
 # Organize levels of LUI
 diversity_all_abundance$LandUse.0 <- factor(diversity_all_abundance$LandUse.0, 
@@ -1301,6 +1340,9 @@ m1_final <- lmer(logAbundance ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
 
 # test significance of fixed effects 
 Anova(m1_final)
+
+# Calculate R^2
+MuMIn::r.squaredGLMM(m1_final)
 
 # Export estimates
 require(broom)
@@ -1338,6 +1380,9 @@ m2_final <- lmer(logAbundance ~ LandUse.1 + Kingdom + LandUse.1:Kingdom +
 
 # Check they have the same sample size with the complex model
 summary(m2_final)
+
+# Calculate R^2
+MuMIn::r.squaredGLMM(m2_final)
 
 # Compare AICs
 AIC(m1_final, m2_final)
@@ -1377,6 +1422,9 @@ m3_final <- lmer(logAbundance ~ LandUse.0 + Kingdom.1 + LandUse.0:Kingdom.1 +
 # Check they have the same sample size with the complex model
 summary(m3_final)
 
+# Calculate R^2
+MuMIn::r.squaredGLMM(m3_final)
+
 # check if we've lost a significant amount of explanatory power 
 anova(m1_final, m3_final, test = "F")
 
@@ -1392,7 +1440,7 @@ PlotErrBar_interactions(model = m1_final, resp = "Species richness", Effect1 = "
                         ylims = c(-0.2,0.25), pointtype = c(16,17,18),blackwhite = FALSE)
 
 # Export pdf with the graph
-pdf(file = "./output/figures/02_Statistical_Analysis_Abundance_model_results.pdf", width = 10)
+pdf(file = "./output/graphs_tables/02_Statistical_Analysis_Abundance_model_results.pdf", width = 10)
 
 # Plot the differences between estimates 
 PlotErrBar_interactions_modi(model = m1_final,
