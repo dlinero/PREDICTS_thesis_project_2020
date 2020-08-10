@@ -1335,8 +1335,17 @@ diversity_all_abundance$LandUse.0 <- factor(diversity_all_abundance$LandUse.0,
 # but I’m going to transform it in order to meet the assumptions of linear mixed models.
 
 m1_final <- lmer(logAbundance ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
-                   (1|SS) + (1|SSB) + (1|Source_ID),
+                    (1|Source_ID)+ (1|SS) + (1|SSB),
                  data = diversity_all_abundance)
+
+# Try simpler random effects structure
+m1_final1 <- lmer(logAbundance ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
+                   (1|SS) + (1|SSB),
+                 data = diversity_all_abundance)
+
+# compare the models that converged using Akaike's Information Criterion (AIC)
+AIC(m1_final, m1_final1)
+
 
 # test significance of fixed effects 
 Anova(m1_final)

@@ -681,7 +681,7 @@ source("./R/02_Statistical_Analysis_merge_LandUses_Intensities.R")
 # different use intensities 
 land_uses_separate_final <- c("Primary","Cropland", "ISV", "Plantation forest")
 # Create a vector with the land-uses where we want to merge the light 
-# and intense use intensities
+  # and intense use intensities
 land_uses_light_intense_final <- c("Primary", "Cropland", "ISV", "Plantation forest")
 
 
@@ -800,6 +800,16 @@ m2_final <- glmer(Species_richness ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
 
 # test overdispersion
 overdisp_fun(m2_final) # Not overdispersed
+
+# Try simpler random effects structure
+m2_final1 <- glmer(Species_richness ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
+                    (1|SS) + (1|SSB) + (1|SSBS), data = diversity_all, family = poisson, 
+                   control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 20000)))
+
+
+# compare the models that converged using Akaike's Information Criterion (AIC)
+AIC(m2_final, m2_final1)
+
 
 # Calculate R^2
 MuMIn::r.squaredGLMM(m2_final, pj2014 = TRUE)

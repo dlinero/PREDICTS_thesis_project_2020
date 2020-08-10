@@ -517,6 +517,15 @@ m1_final <- lmer(log_one_over_D ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
                    (1|Source_ID) + (1|SS) + (1|SSB),
                  data = diversity_all_simpson)
 
+# Try simpler random effects structure
+m1_final1 <- lmer(log_one_over_D ~ LandUse.0 + Kingdom + LandUse.0:Kingdom +
+                   (1|SS) + (1|SSB),
+                 data = diversity_all_simpson)
+
+# compare the models that converged using Akaike's Information Criterion (AIC)
+AIC(m1_final, m1_final1)
+
+
 # test significance of fixed effects 
 Anova(m1_final)
 

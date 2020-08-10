@@ -1,3 +1,7 @@
+# Load libraries
+library(dplyr)
+library(lme4)
+
 # Try all the combinations of possible land-use types and land-use categories
 
 # In order to know which levels to use in all of the models:
