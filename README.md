@@ -1,8 +1,10 @@
 # PREDICTS_thesis_project_2020
 
 Thesis tittle: Effects of land-use change on tropical biodiversity: impacts on species associated with abiotic and vertebrate seed dispersal 
+
 Author: Daniela Linero
-Course: MSc of Ecology, Evolution and Conservation 
+
+Course: MSc of Ecology, Evolution and Conservation (Imperial College London)
 
 This project folder constains the scripts for data processing and output files.
 
